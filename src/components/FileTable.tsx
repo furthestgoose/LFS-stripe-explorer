@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { adviseFile, adviceSummary, collectAdvice, type Advice, type AdviceKind } from "@/lib/advisor";
 import type { FileStripeInfo, ScanResult } from "@/lib/types";
 
 export default function FileTable({ result, onSelect }: { result: ScanResult; onSelect?: (f: FileStripeInfo) => void }) {
@@ -16,6 +17,7 @@ export default function FileTable({ result, onSelect }: { result: ScanResult; on
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, pages - 1);
   const shown = filtered.slice(safePage * pageSize, (safePage + 1) * pageSize);
+  const summary = adviceSummary(collectAdvice(filtered));
 
   return (
     <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
@@ -30,6 +32,19 @@ export default function FileTable({ result, onSelect }: { result: ScanResult; on
           onChange={(e) => setFilter(e.target.value)}
         />
       </div>
+      {summary.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-zinc-500">advice:</span>
+          {summary.map((s) => (
+            <span
+              key={s.label}
+              className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 font-mono text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+            >
+              {s.label} × {s.count}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="min-w-full text-sm">
           <thead>
@@ -39,11 +54,12 @@ export default function FileTable({ result, onSelect }: { result: ScanResult; on
               <th className="px-2 py-1">layout</th>
               <th className="px-2 py-1">stripes</th>
               <th className="px-2 py-1">OSTs</th>
+              <th className="px-2 py-1">advice</th>
             </tr>
           </thead>
           <tbody>
             {shown.map((f) => (
-              <FileRow key={f.path} file={f} onSelect={onSelect} />
+              <FileRow key={f.path} file={f} advice={adviseFile(f)} onSelect={onSelect} />
             ))}
           </tbody>
         </table>
@@ -79,7 +95,15 @@ function layoutLabel(f: FileStripeInfo): string {
   return l.type;
 }
 
-function FileRow({ file, onSelect }: { file: FileStripeInfo; onSelect?: (f: FileStripeInfo) => void }) {
+const ADVICE_STYLE: Record<AdviceKind, string> = {
+  "overstriped-tiny": "bg-zinc-100 text-zinc-700 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700",
+  "overstriped-small": "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+  "wide-mirrors": "bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200 dark:bg-fuchsia-950 dark:text-fuchsia-200 dark:border-fuchsia-800",
+  "oversized-mirrors": "bg-zinc-100 text-zinc-700 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700",
+  "hot-single-ost": "bg-red-100 text-red-800 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800",
+};
+
+function FileRow({ file, advice, onSelect }: { file: FileStripeInfo; advice: Advice | null; onSelect?: (f: FileStripeInfo) => void }) {
   const osts = useMemo(() => [...new Set(file.stripes.filter((s) => s.ost >= 0).map((s) => s.ost))].sort((a, b) => a - b), [file]);
   return (
     <tr
@@ -92,6 +116,16 @@ function FileRow({ file, onSelect }: { file: FileStripeInfo; onSelect?: (f: File
       <td className="px-2 py-1 font-mono text-xs">{layoutLabel(file)}</td>
       <td className="px-2 py-1 font-mono text-xs">{file.stripes.length}</td>
       <td className="px-2 py-1 font-mono text-xs">{osts.join(", ")}</td>
+      <td className="px-2 py-1">
+        {advice && (
+          <span
+            className={`cursor-help rounded border px-1.5 py-0.5 text-[10px] ${ADVICE_STYLE[advice.kind]}`}
+            title={advice.detail + (advice.command ? ` — ${advice.command}` : "")}
+          >
+            {advice.label}
+          </span>
+        )}
+      </td>
     </tr>
   );
 }
