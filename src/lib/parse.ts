@@ -111,16 +111,10 @@ function collectStripeNodes(node: unknown, out: RawNode[]): void {
   if (node === null || typeof node !== "object") return;
   const obj = node as RawNode;
   const keys = Object.keys(obj);
-  const lmmKeys = keys.filter((k) => /^lmm_/.test(k));
-  // Pure layout blocks (all lmm_*) are metadata, not stripe nodes. But
-  // lmm_objects entries ({l_ost_idx, l_fid}) are the real per-OST placements —
-  // keep them: small nodes whose lmm_ keys are paired with an fid.
-  if (lmmKeys.length === keys.length) {
-    const hasFid = keys.some((k) => /(^|_)fid$/i.test(k));
-    if (!(keys.length <= 2 && hasFid)) return;
-  }
-  const offsetKey = findOffsetKey(obj);
-  if (offsetKey) out.push(obj);
+  // Pure layout blocks (all lmm_*) are metadata, not stripe nodes — but they
+  // can wrap lmm_objects, which holds the real per-OST placements, so we must
+  // still descend into them. Regular files emit ONLY this shape.
+  if (!keys.every((k) => /^lmm_/.test(k)) && findOffsetKey(obj)) out.push(obj);
   for (const value of Object.values(obj)) collectStripeNodes(value, out);
 }
 

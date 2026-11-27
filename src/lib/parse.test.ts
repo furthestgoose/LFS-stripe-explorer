@@ -101,7 +101,8 @@ function expectStripes(info: ReturnType<typeof parseGetstripeYaml> | null, expec
   expect(got).toEqual(expected);
 }
 
-// Verbatim `lfs getstripe --yaml <dir>` output from a real 2-OST cluster.
+// Verbatim `lfs getstripe --yaml <dir>` output from a real 2-OST cluster:
+// directory output has top-level stripe_* scalars plus the lmm_* block.
 const REAL_CLUSTER_DIR = `
 stripe_count:  2
 stripe_size:   4194304
@@ -134,6 +135,23 @@ lmm_layout_gen:    0
 lmm_stripe_offset: -1
 `;
 
+// Verbatim `lfs getstripe --yaml <file>` output from the same cluster
+// (lustrelab-AB-client, /mnt/lustre/test2/multi-ost-file): a REGULAR FILE
+// emits ONLY the lmm_* block — no top-level stripe_* scalars. The all-lmm
+// root must still be descended into so lmm_objects placements are found.
+const REAL_CLUSTER_FILE = `
+lmm_stripe_count:  2
+lmm_stripe_size:   4194304
+lmm_pattern:       raid0
+lmm_layout_gen:    0
+lmm_stripe_offset: 1
+lmm_objects:
+      - l_ost_idx: 1
+        l_fid:     0x280000400:0x3:0x0
+      - l_ost_idx: 0
+        l_fid:     0x240000400:0x4:0x0
+`;
+
 describe("real cluster getstripe --yaml output", () => {
   it("parses raid0 with stripe_offset at top level (no components nesting)", () => {
     expectStripes(parseGetstripeYaml(RAID0_TOPLEVEL), [
@@ -162,6 +180,21 @@ describe("real cluster getstripe --yaml output", () => {
 
   it("reports one unplaced stripe for a never-written file (stripe_offset -1 only)", () => {
     expectStripes(parseGetstripeYaml(UNPLACED_FILE), [[0, 1, -1, -1]]);
+  });
+
+  it("parses lmm_objects from file-shaped output with no top-level scalars", () => {
+    expectStripes(parseGetstripeYaml(REAL_CLUSTER_FILE), [
+      [0, 1, 1, -1],
+      [1, 2, 0, -1],
+    ]);
+  });
+
+  it("drops the phantom unplaced row when real lmm_objects exist (directory shape regression)", () => {
+    for (const raw of [REAL_CLUSTER_DIR, REAL_CLUSTER_FILE]) {
+      const info = parseGetstripeYaml(raw)!;
+      info.stripes.every((s) => expect(s.ost).toBeGreaterThanOrEqual(0));
+      expect(info.stripes.map((s) => s.ost)).toEqual([1, 0]);
+    }
   });
 });
 
