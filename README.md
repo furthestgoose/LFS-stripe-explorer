@@ -1,36 +1,61 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Lustre Stripe Explorer
 
-## Getting Started
+A Next.js + TypeScript web app that points at a directory on a Lustre filesystem and shows where
+every file's stripes landed across OSTs — a per-file stripe map, per-OST balance statistics, and a
+drill-down with the raw `lfs getstripe` output for each file.
 
-First, run the development server:
+## Run it
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Modes
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Live scan** — type or browse to a directory on a Lustre client and click **scan**. The server walks
+the tree (capped at 200k files / depth 24), runs `lfs getstripe --yaml <file>` on every regular file
+with bounded parallelism (24 concurrent, 30s timeout each), and aggregates the results. `lfs` must be
+on the host running the dev server.
 
-## Learn More
+**Demo data** — check “demo data” and click **load demo** to render a simulated 8-OST pool (raid0 +
+PFL + mirrored layouts) without touching a filesystem. Useful on developer machines.
 
-To learn more about Next.js, take a look at the following resources:
+## What you get
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Stats cards**: file/stripe totals, OSTs in use, total size, balance %, min/max components per OST
+- **OST balance chart**: component counts per OST with gini, coefficient of variation, and the
+  count-bytes correlation
+- **Layouts histogram**: distribution of stripe layouts across the tree
+- **Stripe map**: one row per file, one colored cell per OST holding at least one of its stripes;
+  click a row for the drawer with per-stripe intervals, mirror ids, and the raw getstripe YAML
+- **File table**: paged, path-filterable listing with size, layout, stripe count and OST list
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## API
 
-## Deploy on Vercel
+- `GET /api/health` -> `{ ok, lfs, mode }`
+- `GET /api/browse?root=/lustre/...` -> `{ path, entries: [{ name, isDir }] }`
+- `POST /api/scan` with `{ "root": "/lustre/dir", "mode": "live" | "demo" }` -> full `ScanPayload`
+  (JSON). Live mode returns a friendly 501 with a hint when `lfs` is unavailable.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Layout support
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The parser (src/lib/parse.ts) is a tolerant, indent-based reader of `lfs getstripe --yaml` output:
+
+- plain `raid0` files (`lmm_stripe_*` headers with per-stripe `stripe_offset` entries)
+- progressive file layouts (PFL): `components:` entries with `start_extent`/`end_extent`
+  (`end_extent: -1` is treated as open-to-EOF)
+- mirrored / FLR layouts: `mirror_id` retained per stripe, `stripe_offset: -1` rows kept as *unplaced*
+- legacy plain `ost>N: oid=... idx=...` output as a fallback
+
+Unplaced stripes (OST -1) are kept in per-file data but excluded from per-OST tallies.
+
+## Development
+
+```bash
+npm run lint     # eslint
+npx tsc --noEmit # typecheck
+npx vitest run   # parser unit tests
+```
