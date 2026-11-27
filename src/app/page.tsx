@@ -8,7 +8,16 @@ import OstBalanceChart from "@/components/OstBalanceChart";
 import OstSpacePanel from "@/components/OstSpacePanel";
 import FileTable from "@/components/FileTable";
 import FileDetailDrawer from "@/components/FileDetailDrawer";
-import type { FileStripeInfo, ScanPayload } from "@/lib/types";
+import type { FileStripeInfo, ScanPayload, ScanResult } from "@/lib/types";
+
+// Smallest per-OST capacity (KiB) from lfs df, used to scale advisor hot
+// thresholds down for small lab clusters; null when lfs df data is absent.
+function ostCapacityFor(result: ScanResult | null): number | null {
+  const caps = (result?.ostSpace ?? [])
+    .map((o) => o.totalK)
+    .filter((k): k is number => typeof k === "number" && k > 0);
+  return caps.length ? Math.min(...caps) : null;
+}
 
 export default function Home() {
   const [payload, setPayload] = useState<ScanPayload | null>(null);
@@ -46,10 +55,11 @@ export default function Home() {
           </div>
           <OstSpacePanel result={payload.result} />
           <StripeGrid result={payload.result} />
-          <FileTable result={payload.result} onSelect={setDetail} />
+          <FileTable result={payload.result} ostCapacity={ostCapacityFor(payload.result)} onSelect={setDetail} />
+...
         </>
       )}
-      {detail && <FileDetailDrawer file={detail} onClose={() => setDetail(null)} />}
+      {detail && <FileDetailDrawer file={detail} ostCapacity={ostCapacityFor(payload?.result ?? null)} onClose={() => setDetail(null)} />}
       {!payload?.result && !busy && (
         <div className="rounded-lg border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-zinc-700">
           Scan a directory — or check “demo data” — to see per-file stripe placement across OSTs.
@@ -59,7 +69,7 @@ export default function Home() {
   );
 }
 
-function LayoutHistogram({ result }: { result: NonNullable<ScanPayload["result"]> }) {
+function LayoutHistogram({ result }: { result: ScanResult }) {
   const rows = result.statsExtra?.layoutHistogram ?? [];
   const total = rows.reduce((a, r) => a + r.value, 0) || 1;
   return (

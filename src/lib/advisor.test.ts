@@ -62,6 +62,17 @@ describe("striping advisor", () => {
     expect(a!.command).toContain("--stripe-count 2");
   });
 
+  it("flags moderate single-OST files on small-capacity clusters", () => {
+    // 512 MiB OSTs: the 8 GiB bar must shrink to 15% of a 0.5 GiB OST (~75 MiB).
+    const file = f("labhot", 100 * 1024 ** 2, { type: "raid0", stripe_count: 1, stripe_size: 1024 ** 2, pool: null }, [
+      { start: 0, end: 100 * 1024 ** 2, ost: 0, mirror: 0 },
+    ]);
+    const a = adviseFile(file, 524288);
+    expect(a?.kind).toBe("hot-single-ost");
+    // Same file stays silent when capacity is unknown (classic 8 GiB bar).
+    expect(adviseFile(file)).toBeNull();
+  });
+
   it("clears single-OST files that are not large", () => {
     const file = f("ok", 1024 ** 2, { type: "raid0", stripe_count: 1, stripe_size: 1024 ** 2, pool: null }, [
       { start: 0, end: 1024 ** 2, ost: 0, mirror: 0 },

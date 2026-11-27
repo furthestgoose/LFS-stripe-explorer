@@ -12,9 +12,16 @@ const FIRST_STRIPE_ROWS = 12;
  * `lfs getstripe --yaml` output captured at scan time. Reused by the file table
  * and the stripe map.
  */
-export default function FileDetailDrawer({ file, onClose }: { file: FileStripeInfo; onClose: () => void }) {
-  const [showAll, setShowAll] = useState(false);
-  const advice = adviseFile(file);
+export default function FileDetailDrawer({
+  file,
+  ostCapacity,
+  onClose,
+}: {
+  file: FileStripeInfo;
+  ostCapacity: number | null;
+  onClose: () => void;
+}) {  const [showAll, setShowAll] = useState(false);
+  const advice = adviseFile(file, ostCapacity);
   const placed = file.stripes.filter((s) => s.ost >= 0);
   const perOst = new Map<number, number>();
   for (const s of placed) perOst.set(s.ost, (perOst.get(s.ost) ?? 0) + Math.max(1, s.end - s.start));

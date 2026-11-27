@@ -4,7 +4,15 @@ import { useMemo, useState } from "react";
 import { adviseFile, adviceSummary, collectAdvice, type Advice, type AdviceKind } from "@/lib/advisor";
 import type { FileStripeInfo, ScanResult } from "@/lib/types";
 
-export default function FileTable({ result, onSelect }: { result: ScanResult; onSelect?: (f: FileStripeInfo) => void }) {
+export default function FileTable({
+  result,
+  ostCapacity,
+  onSelect,
+}: {
+  result: ScanResult;
+  ostCapacity: number | null;
+  onSelect?: (f: FileStripeInfo) => void;
+}) {
   const [filter, setFilter] = useState("");
   const [page, setPage] = useState(0);
   const pageSize = 50;
@@ -17,7 +25,7 @@ export default function FileTable({ result, onSelect }: { result: ScanResult; on
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, pages - 1);
   const shown = filtered.slice(safePage * pageSize, (safePage + 1) * pageSize);
-  const summary = adviceSummary(collectAdvice(filtered));
+  const summary = adviceSummary(collectAdvice(filtered, ostCapacity));
 
   return (
     <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
@@ -59,7 +67,7 @@ export default function FileTable({ result, onSelect }: { result: ScanResult; on
           </thead>
           <tbody>
             {shown.map((f) => (
-              <FileRow key={f.path} file={f} advice={adviseFile(f)} onSelect={onSelect} />
+              <FileRow key={f.path} file={f} advice={adviseFile(f, ostCapacity)} onSelect={onSelect} />
             ))}
           </tbody>
         </table>

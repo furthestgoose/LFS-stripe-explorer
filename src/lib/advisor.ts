@@ -17,6 +17,15 @@ export interface Advice {
   command: string | null;
 }
 
+/** "Hot" thresholds must mean something on any cluster — from a 512 MiB lab
+ *  sandbox to petabytes. Derived from per-OST capacity; falls back to the
+ *  historic 8 GiB when unknown, and never above 25% of one OST. */
+export function hotOstThreshold(minOstTotalK: number | null): number {
+  if (!minOstTotalK || minOstTotalK <= 0) return 8 * 1024 ** 3;
+  // 15% of one OST, and no more than a fifth of the classic 8 GiB bar.
+  return Math.min(8 * 1024 ** 3 / 5, 0.15 * minOstTotalK * 1024);
+}
+
 /** Whole bytes of one stripe unit, for sanity-checking width thresholds. */
 function stripeUnitBytes(l: Layout): number {
   if (l.type === "raid0") return l.stripe_size || 1024 ** 2;
@@ -37,7 +46,17 @@ function stripesUsed(file: FileStripeInfo): number {
   return Math.max(1, Math.ceil(file.size / unit));
 }
 
-export function adviseFile(file: FileStripeInfo): Advice | null {
+/** Capacity-relative "hot" cutoff in bytes.
+ *  raid1: per-copy bytes vs cutoff. Others: file size vs cutoff. */
+export function oversizedHotBytes(file: FileStripeInfo, ostCapacity: number | null): number {
+  const cutoff = hotOstThreshold(ostCapacity ? ostCapacity / 1024 : null);
+  const k = file.layout.type === "raid1" ? Math.max(1, file.layout.mirror_count) : 1;
+  return cutoff * k;
+}
+
+/** Flag a file whose layout fights its size. ostCapacity = smallest
+ *  per-OST capacity in KiB from `lfs df` (null → classic 8 GiB hot bar). */
+export function adviseFile(file: FileStripeInfo, ostCapacity: number | null = null): Advice | null {
   const l = file.layout;
   const placed = file.stripes.filter((s) => s.ost >= 0);
   const oneCopyBytes = l.type === "raid1" ? file.size / Math.max(1, l.mirror_count) : file.size;
@@ -81,8 +100,8 @@ export function adviseFile(file: FileStripeInfo): Advice | null {
     }
     if (
       l.mirror_count >= 2 &&
-      oneCopyBytes / l.mirror_count >= 8 * 1024 ** 3 &&
-      file.size < 64 * 1024 ** 3
+      oneCopyBytes / l.mirror_count >= oversizedHotBytes(file, ostCapacity) &&
+      file.size < 16 * oversizedHotBytes(file, ostCapacity)
     ) {
       return {
         kind: "oversized-mirrors",
@@ -93,7 +112,7 @@ export function adviseFile(file: FileStripeInfo): Advice | null {
     }
   }
 
-  if (placed.length === 1 && file.size >= 8 * 1024 ** 3) {
+  if (placed.length === 1 && file.size >= oversizedHotBytes(file, ostCapacity)) {
     return {
       kind: "hot-single-ost",
       label: "hot single OST",
@@ -105,11 +124,16 @@ export function adviseFile(file: FileStripeInfo): Advice | null {
   return null;
 }
 
-/** Scan a result set, returning only the files that earned an advice badge. */
-export function collectAdvice(files: FileStripeInfo[]): Array<{ file: FileStripeInfo; advice: Advice }> {
+/** Scan a result set, returning only the files that earned an advice badge.
+ *  ostCapacity: smallest/typical OST capacity in KiB from `lfs df`, for
+ *  capacity-relative hot thresholds; pass null for the classic 8 GiB bar. */
+export function collectAdvice(
+  files: FileStripeInfo[],
+  ostCapacity: number | null = null,
+): Array<{ file: FileStripeInfo; advice: Advice }> {
   const out: Array<{ file: FileStripeInfo; advice: Advice }> = [];
   for (const f of files) {
-    const a = adviseFile(f);
+    const a = adviseFile(f, ostCapacity);
     if (a) out.push({ file: f, advice: a });
   }
   return out;
