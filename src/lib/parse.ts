@@ -94,6 +94,8 @@ const OFFSET_KEY_RE = /^stripe[o_.]?(offset|offsets|object_id|objs_id|obj_id|oid
 function findOffsetKey(obj: RawNode): string | undefined {
   const keys = Object.keys(obj);
   return (
+    // Plain lmm_objects entries carry the OST in l_ost_idx / ost_idx.
+    keys.find((k) => k === "l_ost_idx" || k === "ost_idx") ??
     keys.find((k) => OFFSET_KEY_RE.test(k)) ??
     keys.find((k) => k.startsWith("stripe") && /idx$/i.test(k)) ??
     keys.find((k) => /(^|_)obj_id$/.test(k) || k.endsWith("_ost_idx")) ??
@@ -108,8 +110,15 @@ function collectStripeNodes(node: unknown, out: RawNode[]): void {
   }
   if (node === null || typeof node !== "object") return;
   const obj = node as RawNode;
-  const lmmKeys = Object.keys(obj).filter((k) => /^lmm_/.test(k));
-  if (lmmKeys.length === Object.keys(obj).length) return;
+  const keys = Object.keys(obj);
+  const lmmKeys = keys.filter((k) => /^lmm_/.test(k));
+  // Pure layout blocks (all lmm_*) are metadata, not stripe nodes. But
+  // lmm_objects entries ({l_ost_idx, l_fid}) are the real per-OST placements —
+  // keep them: small nodes whose lmm_ keys are paired with an fid.
+  if (lmmKeys.length === keys.length) {
+    const hasFid = keys.some((k) => /(^|_)fid$/i.test(k));
+    if (!(keys.length <= 2 && hasFid)) return;
+  }
   const offsetKey = findOffsetKey(obj);
   if (offsetKey) out.push(obj);
   for (const value of Object.values(obj)) collectStripeNodes(value, out);
@@ -164,6 +173,21 @@ function readCount(node: RawNode, keys: string[]): number | null {
   return null;
 }
 
+/**
+ * The layout (lmm_*) block includes lmm_stripe_offset / stripe_offset, which
+ * describe which OST a *new* file starts on — not where this file's stripes
+ * actually landed. Trust lmm_objects entries (or other nested nodes); only
+ * fall back to those top-level hints when the output has no object list.
+ */
+function hasObjectEntries(nodes: RawNode[]): boolean {
+  return nodes.some((node) => {
+    if (Object.keys(node).some((k) => k === "l_ost_idx" || k === "ost_idx")) return true;
+    const nested = Object.values(node).filter((v) => v && typeof v === "object") as RawNode[];
+    if (!nested.length) return false;
+    return hasObjectEntries(nested);
+  });
+}
+
 export function parseGetstripeYaml(text: string): ParsedStripeInfo | null {
   const lines = preprocessLines(text);
   if (!lines.length) return null;
@@ -173,7 +197,23 @@ export function parseGetstripeYaml(text: string): ParsedStripeInfo | null {
   const componentNodes: RawNode[] = [];
   collectStripeNodes(root, componentNodes);
 
-  const components: ComponentRow[] = componentNodes.flatMap((node): ComponentRow[] => {
+  const components: ComponentRow[] = componentNodes
+    .filter((node) => {
+      if (!hasObjectEntries(componentNodes)) return true;
+      // With an object list present, a scalar top-level stripe_offset /
+      // lmm_stripe_offset is only the "next write starts here" hint, not a
+      // placed component — drop it. Real components carry extents.
+      const offsetKey = findOffsetKey(node);
+      if (offsetKey !== "stripe_offset" && offsetKey !== "lmm_stripe_offset") return true;
+      // File-scope hints (incl. the root holding -1) have no extents; real
+      // component nodes (PFL, mirrors) do. Nested stripe objects are collected
+      // separately, so dropping the parent loses nothing.
+      const hasExtent = Object.keys(node).some((k) =>
+        /extent|stripe_start|stripe_end/.test(k) || k === "start" || k === "end",
+      );
+      return hasExtent;
+    })
+    .flatMap((node): ComponentRow[] => {
     const mirrorKey = ["mirror_id", "mirror", "mirrored_id"].find((k) => node[k] !== undefined);
     const mirror = mirrorKey ? toInt(node[mirrorKey]) : -1;
     const offsetKey = findOffsetKey(node);

@@ -101,6 +101,39 @@ function expectStripes(info: ReturnType<typeof parseGetstripeYaml> | null, expec
   expect(got).toEqual(expected);
 }
 
+// Verbatim `lfs getstripe --yaml <dir>` output from a real 2-OST cluster.
+const REAL_CLUSTER_DIR = `
+stripe_count:  2
+stripe_size:   4194304
+pattern:       raid0
+stripe_offset: -1
+lmm_stripe_count:  2
+lmm_stripe_size:   4194304
+lmm_pattern:       raid0
+lmm_layout_gen:    0
+lmm_stripe_offset: 1
+lmm_objects:
+      - l_ost_idx: 1
+        l_fid:     0x280000400:0x3:0x0
+      - l_ost_idx: 0
+        l_fid:     0x240000400:0x4:0x0
+`;
+
+// A never-written file has no object list: its stripe_offset hint stays -1
+// and the single stripe is reported as unplaced (ost -1), matching how the
+// UI tallies unplaced files.
+const UNPLACED_FILE = `
+stripe_count:  1
+stripe_size:   4194304
+pattern:       raid0
+stripe_offset: -1
+lmm_stripe_count:  1
+lmm_stripe_size:   4194304
+lmm_pattern:       raid0
+lmm_layout_gen:    0
+lmm_stripe_offset: -1
+`;
+
 describe("real cluster getstripe --yaml output", () => {
   it("parses raid0 with stripe_offset at top level (no components nesting)", () => {
     expectStripes(parseGetstripeYaml(RAID0_TOPLEVEL), [
@@ -118,6 +151,17 @@ describe("real cluster getstripe --yaml output", () => {
 
   it("parses raid0 with stripe_offset indented under lmm keys", () => {
     expectStripes(parseGetstripeYaml(RAID0_INDENTED), [[0, 1, 5, -1]]);
+  });
+
+  it("parses raid0 with lmm_objects (verbatim real-cluster directory output)", () => {
+    expectStripes(parseGetstripeYaml(REAL_CLUSTER_DIR), [
+      [0, 1, 1, -1],
+      [1, 2, 0, -1],
+    ]);
+  });
+
+  it("reports one unplaced stripe for a never-written file (stripe_offset -1 only)", () => {
+    expectStripes(parseGetstripeYaml(UNPLACED_FILE), [[0, 1, -1, -1]]);
   });
 });
 
