@@ -65,6 +65,62 @@ describe("parseGetstripeYaml", () => {
   });
 });
 
+const RAID0_TOPLEVEL = `
+lmm_stripe_count: 2
+lmm_stripe_size: 1M
+lmm_pool_name: lustre
+stripe_count: 2 | 2
+stripe_size: 1M | 1M
+stripe_offset: 0
+stripe_offset: 1
+`;
+
+const RAID0_WIDE = `
+lmm_stripe_count: 2
+lmm_stripe_size: 1048576
+lmm_pool_name: lustre
+stripe_count: 2
+stripe_size: 1048576
+stripe_offset: 2,1
+`;
+
+const RAID0_INDENTED = `
+lmm_stripe_count: 2
+lmm_stripe_size: 4M
+lmm_pool_name: lustre
+  stripe_count: 2
+  stripe_size: 4M
+  stripe_offset: 5
+`;
+
+type Component = [start: number, end: number, ost: number, mirror: number];
+
+function expectStripes(info: ReturnType<typeof parseGetstripeYaml> | null, expected: Component[]): void {
+  expect(info).not.toBeNull();
+  const got = info!.stripes.map((s) => [s.start, s.end, s.ost, s.mirror] as Component);
+  expect(got).toEqual(expected);
+}
+
+describe("real cluster getstripe --yaml output", () => {
+  it("parses raid0 with stripe_offset at top level (no components nesting)", () => {
+    expectStripes(parseGetstripeYaml(RAID0_TOPLEVEL), [
+      [0, 1, 0, -1],
+      [1, 2, 1, -1],
+    ]);
+  });
+
+  it("parses raid0 with wide (single-line) stripe_offset", () => {
+    expectStripes(parseGetstripeYaml(RAID0_WIDE), [
+      [0, 1, 2, -1],
+      [1, 2, 1, -1],
+    ]);
+  });
+
+  it("parses raid0 with stripe_offset indented under lmm keys", () => {
+    expectStripes(parseGetstripeYaml(RAID0_INDENTED), [[0, 1, 5, -1]]);
+  });
+});
+
 describe("parseLegacyOutput", () => {
   it("parses legacy ost>N rows", () => {
     const info = parseLegacyOutput(LEGACY_PLAIN);

@@ -21,6 +21,8 @@ function preprocessLines(text: string): RawLine[] {
     if (!noComment.trim()) continue;
     // Tolerates YAML list markers ("- 0: {...}") and inline flow maps; flow
     // entries become pseudo-nodes so nested stripes remain discoverable.
+    // Indentation depth only matters relative to neighbours, so odd indents
+    // (seen from some lfs builds) parse fine.
     const match = noComment.match(/^(\s*)(?:-\s+)?(?:([A-Za-z0-9_]+)\s*:?\s*)?([\{].*)?$/);
     const keyMatch = noComment.match(/^(\s*)(?:-\s+)?([A-Za-z0-9_]+):\s*(.*?)\s*$/);
     if (!match && !keyMatch) continue;
@@ -36,6 +38,11 @@ function preprocessLines(text: string): RawLine[] {
     }
     if (value === "" || value === "~" || value === "''" || value === '""') {
       value = null;
+    }
+    // lmm_* keys are emitted at file scope; indent noise must not bury them.
+    if (key.startsWith("lmm_")) {
+      lines.push({ indent: 0, key, value });
+      continue;
     }
     if (value && value.trim().startsWith("{")) {
       const inner = value.trim().slice(1, -1);
@@ -76,6 +83,24 @@ function toBytes(value: unknown): number {
 }
 
 
+const OFFSET_KEY_RE = /^stripe[o_.]?(offset|offsets|object_id|objs_id|obj_id|oid|object|objs|idx|index|ost|ost_idx)$/i;
+
+/**
+ * Finds the key carrying OST ids on a stripe node. Real lfs builds differ:
+ * plain raid0 uses "stripe_offset" (or "stripe_idx"/"stripe_index"); some
+ * emit "oid"/"idx" pairs; "stripe_ost" appears for single-OST layouts.
+ * Falls back to any "oid" key since it is unambiguous on stripe nodes.
+ */
+function findOffsetKey(obj: RawNode): string | undefined {
+  const keys = Object.keys(obj);
+  return (
+    keys.find((k) => OFFSET_KEY_RE.test(k)) ??
+    keys.find((k) => k.startsWith("stripe") && /idx$/i.test(k)) ??
+    keys.find((k) => /(^|_)obj_id$/.test(k) || k.endsWith("_ost_idx")) ??
+    keys.find((k) => k === "oid")
+  );
+}
+
 function collectStripeNodes(node: unknown, out: RawNode[]): void {
   if (Array.isArray(node)) {
     for (const item of node) collectStripeNodes(item, out);
@@ -83,7 +108,9 @@ function collectStripeNodes(node: unknown, out: RawNode[]): void {
   }
   if (node === null || typeof node !== "object") return;
   const obj = node as RawNode;
-  const offsetKey = Object.keys(obj).find((k) => /^stripe.?o(f+set|bj_id|x)$/.test(k) || (k.startsWith("stripe") && k.endsWith("idx")));
+  const lmmKeys = Object.keys(obj).filter((k) => /^lmm_/.test(k));
+  if (lmmKeys.length === Object.keys(obj).length) return;
+  const offsetKey = findOffsetKey(obj);
   if (offsetKey) out.push(obj);
   for (const value of Object.values(obj)) collectStripeNodes(value, out);
 }
@@ -149,13 +176,14 @@ export function parseGetstripeYaml(text: string): ParsedStripeInfo | null {
   const components: ComponentRow[] = componentNodes.flatMap((node): ComponentRow[] => {
     const mirrorKey = ["mirror_id", "mirror", "mirrored_id"].find((k) => node[k] !== undefined);
     const mirror = mirrorKey ? toInt(node[mirrorKey]) : -1;
-    const offsetKey = Object.keys(node).find(
-      (k) => /^stripe.?o(f+set|bj_id|x)$/.test(k) || (k.startsWith("stripe") && k.endsWith("idx")),
-    );
+    const offsetKey = findOffsetKey(node);
     const rawOffsets = offsetKey ? node[offsetKey] : undefined;
     const offsets = Array.isArray(rawOffsets)
       ? rawOffsets.map((v) => toInt(v))
-      : [toInt(rawOffsets)];
+      : typeof rawOffsets === "string" && rawOffsets.includes(",")
+        ? // Wide layouts may list every component's OST on one line.
+          rawOffsets.split(",").map((v) => toInt(v.trim()))
+        : [toInt(rawOffsets)];
     const start = readCount(node, ["stripe_start", "start_extent", "start", "fc_start"]);
     let end = readCount(node, ["stripe_end", "end_extent", "end", "fc_end"]);
     if (end !== null && end < 0) {
