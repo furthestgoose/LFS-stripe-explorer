@@ -5,13 +5,16 @@ import ScanForm from "@/components/ScanForm";
 import StatsCards from "@/components/StatsCards";
 import StripeGrid from "@/components/StripeGrid";
 import OstBalanceChart from "@/components/OstBalanceChart";
+import OstSpacePanel from "@/components/OstSpacePanel";
 import FileTable from "@/components/FileTable";
-import type { ScanPayload } from "@/lib/types";
+import FileDetailDrawer from "@/components/FileDetailDrawer";
+import type { FileStripeInfo, ScanPayload } from "@/lib/types";
 
 export default function Home() {
   const [payload, setPayload] = useState<ScanPayload | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [detail, setDetail] = useState<FileStripeInfo | null>(null);
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-4 px-4 py-6 font-sans">
@@ -41,10 +44,12 @@ export default function Home() {
             <OstBalanceChart result={payload.result} />
             <LayoutHistogram result={payload.result} />
           </div>
+          <OstSpacePanel result={payload.result} />
           <StripeGrid result={payload.result} />
-          <FileTable result={payload.result} />
+          <FileTable result={payload.result} onSelect={setDetail} />
         </>
       )}
+      {detail && <FileDetailDrawer file={detail} onClose={() => setDetail(null)} />}
       {!payload?.result && !busy && (
         <div className="rounded-lg border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-zinc-700">
           Scan a directory — or check “demo data” — to see per-file stripe placement across OSTs.

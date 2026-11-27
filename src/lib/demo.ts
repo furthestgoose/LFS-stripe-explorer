@@ -27,7 +27,26 @@ export function demoScan(): ScanResult {
       raw: demoYaml(layout),
     });
   }
-  return finalizeScan("/lustre/demo", files, [], dirs.length, 0, "simulated");
+  const result = finalizeScan("/lustre/demo", files, [], dirs.length, 0, "simulated");
+  // Simulated capacity: 8 OSTs of 4 GiB with usage skewed to match the layout bias.
+  result.ostSpace = OST_NAMES.map((name, i) => {
+    const totalK = 4 * 1024 * 1024;
+    const usedK = Math.round(totalK * (0.05 + ((i * 37) % 90) / 100) * (i === 0 ? 1.8 : 1));
+    return {
+      index: i,
+      name,
+      totalK,
+      usedK,
+      freeK: totalK - usedK,
+      usePct: Math.round((usedK / totalK) * 100),
+      inodesTotal: 100_000 + i,
+      inodesUsed: Math.round(usedK / 4096),
+    };
+  });
+  for (let i = 0; i < OST_NAME_COUNT; i++) {
+    result.ostNames[i] = OST_NAMES[i];
+  }
+  return result;
 }
 
 function pickLayout(rand: () => number): Layout {

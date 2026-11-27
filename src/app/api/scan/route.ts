@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { commandExists, isDirectory } from "@/lib/lfs";
 import { scanDirectory } from "@/lib/scan";
+import { collectOstSpace } from "@/lib/lfsdf";
 import { demoScan } from "@/lib/demo";
 import type { ScanPayload, ScanResult } from "@/lib/types";
 
@@ -35,6 +36,15 @@ export async function POST(req: NextRequest) {
   }
   try {
     const result: ScanResult = await scanDirectory(root);
+    // Enrich with live-capacity data; failure here must not fail the scan.
+    const space = await collectOstSpace(root);
+    if (space.length) {
+      result.ostSpace = space;
+      for (const row of space) {
+        // lfs df names like lustre-OST0003_UUID double as human-readable names.
+        if ((result.ostNames[row.index] ?? "") === "") result.ostNames[row.index] = row.name;
+      }
+    }
     const payload: ScanPayload = { root, result };
     return NextResponse.json(payload);
   } catch (err) {

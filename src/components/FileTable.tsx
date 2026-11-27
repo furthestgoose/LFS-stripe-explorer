@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import type { FileStripeInfo, ScanResult } from "@/lib/types";
 
-export default function FileTable({ result }: { result: ScanResult }) {
+export default function FileTable({ result, onSelect }: { result: ScanResult; onSelect?: (f: FileStripeInfo) => void }) {
   const [filter, setFilter] = useState("");
   const [page, setPage] = useState(0);
   const pageSize = 50;
@@ -43,7 +43,7 @@ export default function FileTable({ result }: { result: ScanResult }) {
           </thead>
           <tbody>
             {shown.map((f) => (
-              <FileRow key={f.path} file={f} />
+              <FileRow key={f.path} file={f} onSelect={onSelect} />
             ))}
           </tbody>
         </table>
@@ -79,10 +79,14 @@ function layoutLabel(f: FileStripeInfo): string {
   return l.type;
 }
 
-function FileRow({ file }: { file: FileStripeInfo }) {
+function FileRow({ file, onSelect }: { file: FileStripeInfo; onSelect?: (f: FileStripeInfo) => void }) {
   const osts = useMemo(() => [...new Set(file.stripes.filter((s) => s.ost >= 0).map((s) => s.ost))].sort((a, b) => a - b), [file]);
   return (
-    <tr className="border-t border-zinc-100 dark:border-zinc-800">
+    <tr
+      className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/60"
+      onClick={() => onSelect?.(file)}
+      title="click for stripe detail"
+    >
       <td className="max-w-[28rem] truncate px-2 py-1 font-mono text-xs" title={file.path}>{file.path}</td>
       <td className="px-2 py-1 font-mono text-xs">{fmtBytes(file.size)}</td>
       <td className="px-2 py-1 font-mono text-xs">{layoutLabel(file)}</td>

@@ -52,6 +52,18 @@ export interface OSTStatisticalProfile {
   countCV: number;
 }
 
+/** Capacity snapshot for one OST, parsed from `lfs df` / `lfs df -i` (units: KiB). */
+export interface OSTDiskSpace {
+  index: number;
+  name: string;
+  totalK: number;
+  usedK: number;
+  freeK: number;
+  usePct: number;
+  inodesTotal: number | null;
+  inodesUsed: number | null;
+}
+
 export interface ScanResult {
   root: string;
   stats: ScanStats;
@@ -60,6 +72,8 @@ export interface ScanResult {
   files: FileStripeInfo[];
   errors: ScanError[];
   ostNames: Record<number, string>;
+  /** Capacity per OST from `lfs df` (absent when lfs df is unavailable). */
+  ostSpace?: OSTDiskSpace[];
   byteDistributions: Array<{ mirror: number; ost: number; bytes: number[]; count: number }>;
   source: "live" | "simulated" | "import";
 }
