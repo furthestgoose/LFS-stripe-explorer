@@ -32,6 +32,11 @@ PFL + mirrored layouts) without touching a filesystem. Useful on developer machi
 - **Stripe map**: one row per file, one colored cell per OST holding at least one of its stripes;
   click a row for the drawer with per-stripe intervals, mirror ids, and the raw getstripe YAML
 - **File table**: paged, path-filterable listing with size, layout, stripe count and OST list
+- **Directory tree**: expandable rollup of files/bytes/stripes per directory ancestor with a
+  per-directory OST composition bar (top 4 OSTs)
+- **Watch mode**: optional 5–60 s auto-rescan (ticks are skipped while a scan is in flight)
+- **Export**: download the scan as `files.csv`, `tree.csv`, `tree-osts.csv`, or a lossless
+  `scan.json` snapshot
 
 ## API
 

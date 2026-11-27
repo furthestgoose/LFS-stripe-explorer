@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import ScanForm from "@/components/ScanForm";
 import StatsCards from "@/components/StatsCards";
 import StripeGrid from "@/components/StripeGrid";
@@ -8,7 +8,11 @@ import OstBalanceChart from "@/components/OstBalanceChart";
 import OstSpacePanel from "@/components/OstSpacePanel";
 import FileTable from "@/components/FileTable";
 import FileDetailDrawer from "@/components/FileDetailDrawer";
+import TreeRollup from "@/components/TreeRollup";
+import ExportBar from "@/components/ExportBar";
+import WatchControls from "@/components/WatchControls";
 import type { FileStripeInfo, ScanPayload, ScanResult } from "@/lib/types";
+import { buildTree } from "@/lib/tree";
 
 // Smallest per-OST capacity (KiB) from lfs df, used to scale advisor hot
 // thresholds down for small lab clusters; null when lfs df data is absent.
@@ -25,6 +29,41 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [detail, setDetail] = useState<FileStripeInfo | null>(null);
 
+  // Shared scan trigger: the form, the watch toggle, and future refresh
+  // buttons all POST the same request so UI state stays single-sourced.
+  const runScan = useCallback(
+    async (root: string, mode: "live" | "demo") => {
+      setBusy(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/scan", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ root, mode }),
+        });
+        const data = (await res.json()) as ScanPayload;
+        if (data.error) {
+          setError(data.error);
+          return;
+        }
+        if (data.result) {
+          setPayload(data);
+          setDetail(null);
+        }
+      } catch (err) {
+        setError(String(err));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [],
+  );
+
+  const tree = useMemo(
+    () => (payload?.result ? buildTree(payload.root, payload.result.files) : []),
+    [payload],
+  );
+
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-4 px-4 py-6 font-sans">
       <header className="flex flex-wrap items-baseline justify-between gap-2">
@@ -35,7 +74,7 @@ export default function Home() {
             : "point at a directory on a Lustre filesystem"}
         </span>
       </header>
-      <ScanForm onResult={setPayload} busy={busy} setBusy={setBusy} setError={setError} />
+      <ScanForm onScan={runScan} busy={busy} setBusy={setBusy} setError={setError} />
       {error && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
           {error}
@@ -48,12 +87,21 @@ export default function Home() {
       )}
       {payload?.result && (
         <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <ExportBar result={payload.result} tree={tree} />
+            <WatchControls
+              root={payload.root}
+              busy={busy}
+              onTick={() => runScan(payload.root, "live")}
+            />
+          </div>
           <StatsCards result={payload.result} />
           <div className="grid gap-4 lg:grid-cols-2">
             <OstBalanceChart result={payload.result} />
             <LayoutHistogram result={payload.result} />
           </div>
           <OstSpacePanel result={payload.result} />
+          <TreeRollup tree={tree} />
           <StripeGrid result={payload.result} />
           <FileTable result={payload.result} ostCapacity={ostCapacityFor(payload.result)} onSelect={setDetail} />
 ...

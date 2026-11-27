@@ -1,16 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { BrowseEntry, BrowseResult, ScanPayload } from "@/lib/types";
+import type { BrowseEntry, BrowseResult } from "@/lib/types";
 
 interface Props {
-  onResult: (payload: ScanPayload) => void;
+  onScan: (root: string, mode: "live" | "demo") => Promise<void>;
   busy: boolean;
   setBusy: (b: boolean) => void;
   setError: (e: string | null) => void;
 }
 
-export default function ScanForm({ onResult, busy, setBusy, setError }: Props) {
+export default function ScanForm({ onScan, busy, setBusy, setError }: Props) {
   const [root, setRoot] = useState("");
   const [dirs, setDirs] = useState<BrowseEntry[]>([]);
   const [parent, setParent] = useState<string | null>(null);
@@ -36,25 +36,9 @@ export default function ScanForm({ onResult, busy, setBusy, setError }: Props) {
 
   const scan = useCallback(async () => {
     setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/scan", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ root, mode }),
-      });
-      const data = (await res.json()) as ScanPayload;
-      if (data.error) {
-        setError(data.error);
-        return;
-      }
-      if (data.result) onResult(data);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setBusy(false);
-    }
-  }, [root, mode, onResult, setBusy, setError]);
+    await onScan(root, mode);
+    setBusy(false);
+  }, [root, mode, onScan, setBusy]);
 
   return (
     <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
