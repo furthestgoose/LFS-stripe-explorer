@@ -11,7 +11,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000.
+Open http://localhost:3000 (see "Run on a Lustre client" below for remote access).
 
 ## Modes
 
@@ -59,3 +59,23 @@ npm run lint     # eslint
 npx tsc --noEmit # typecheck
 npx vitest run   # parser unit tests
 ```
+
+## Run on a Lustre client
+
+Run the dev server on the machine where `/mnt/lustre` is mounted, then access it from a browser on any host:
+
+```bash
+npm run dev
+```
+
+If you browse via the machine's IP (e.g. `http://10.151.0.56:3000`), add it to `allowedDevOrigins` in `next.config.ts` and restart, or the dev overlay's HMR websocket will be blocked:
+
+```ts
+allowedDevOrigins: ["10.151.0.56", "10.66.199.13"]
+```
+
+Then point the path bar at mounted filesystem:
+
+1. Enter `/mnt/lustre` in the path bar and Browse.
+2. Click **Scan directory** — live mode runs `lfs getstripe --yaml` on every file.
+3. Inspect the stripe grid (each cell is a stripe on an OST), per-OST balance, and the stripe table.
