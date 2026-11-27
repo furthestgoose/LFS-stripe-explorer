@@ -67,6 +67,7 @@ export interface ScanResult {
 export interface BrowseEntry {
   name: string;
   isDir: boolean;
+  size?: number;
 }
 
 export interface BrowseResult {

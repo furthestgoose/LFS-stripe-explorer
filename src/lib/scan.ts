@@ -1,4 +1,4 @@
-import { readdir } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { lfs } from "./lfs";
 import { parseGetstripeYaml } from "./parse";
@@ -26,22 +26,21 @@ export async function scanDirectory(root: string): Promise<ScanResult> {
   const files: FileStripeInfo[] = [];
   const errors: ScanError[] = [];
 
-  const paths = await collectFiles(root);
-  const dirs = 0;
-
-  for (let i = 0; i < paths.length; i += LFS_CONCURRENCY) {
-    const batch = paths.slice(i, i + LFS_CONCURRENCY);
+  const { files: walked, dirCount } = await collectFiles(root);
+  for (let i = 0; i < walked.length; i += LFS_CONCURRENCY) {
+    const batch = walked.slice(i, i + LFS_CONCURRENCY);
     const settled = await Promise.all(
-      batch.map(async (path) => {
+      batch.map(async (wf) => {
+        const path = wf.path;
         try {
           const res = await lfs(["getstripe", "--yaml", path], 30_000);
           if (res.code !== 0) {
-            return { path, info: null, raw: res.stdout, err: res.stderr.slice(0, 500) };
+            return { path, size: wf.size, info: null, raw: res.stdout, err: res.stderr.slice(0, 500) };
           }
           const info = parseGetstripeYaml(res.stdout);
-          return { path, info, raw: res.stdout, err: null };
+          return { path, size: wf.size, info, raw: res.stdout, err: null };
         } catch (err) {
-          return { path, info: null, raw: null, err: String(err) };
+          return { path, size: wf.size, info: null, raw: null, err: String(err) };
         }
       }),
     );
@@ -52,7 +51,7 @@ export async function scanDirectory(root: string): Promise<ScanResult> {
       }
       files.push({
         path: item.path,
-        size: 0,
+        size: item.size,
         layout: item.info.layout,
         stripes: item.info.stripes,
         raw: item.raw,
@@ -60,13 +59,18 @@ export async function scanDirectory(root: string): Promise<ScanResult> {
     }
   }
 
-  return finalizeScan(root, files, errors, dirs, Date.now() - started, "live");
+  return finalizeScan(root, files, errors, dirCount, Date.now() - started, "live");
 }
 
-async function collectFiles(root: string): Promise<string[]> {
-  const out: string[] = [];
+interface WalkedFile {
+  path: string;
+  size: number;
+}
+
+async function collectFiles(root: string): Promise<{ files: WalkedFile[]; dirCount: number }> {
+  const out: WalkedFile[] = [];
   const queue: Array<{ path: string; depth: number }> = [{ path: root, depth: 0 }];
-  const dirs: string[] = [];
+  let dirCount = 0;
   while (queue.length && out.length < MAX_FILES) {
     const { path, depth } = queue.shift()!;
     if (depth > MAX_DEPTH) continue;
@@ -79,15 +83,28 @@ async function collectFiles(root: string): Promise<string[]> {
     for (const entry of entries) {
       const full = join(path, entry.name);
       if (entry.isDirectory()) {
-        dirs.push(full);
-        if (dirs.length < MAX_FILES) queue.push({ path: full, depth: depth + 1 });
+        dirCount += 1;
+        queue.push({ path: full, depth: depth + 1 });
       } else if (entry.isFile()) {
-        out.push(full);
+        out.push({ path: full, size: 0 });
         if (out.length >= MAX_FILES) break;
       }
     }
   }
-  return out;
+  // Stat in bounded batches so a huge tree does not flood the event loop.
+  for (let i = 0; i < out.length; i += 512) {
+    await Promise.all(
+      out.slice(i, i + 512).map(async (f) => {
+        try {
+          const st = await stat(f.path);
+          f.size = st.size;
+        } catch {
+          // file vanished mid-scan; leave size 0
+        }
+      }),
+    );
+  }
+  return { files: out, dirCount };
 }
 
 export function finalizeScan(

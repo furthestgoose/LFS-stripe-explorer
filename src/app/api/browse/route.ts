@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readdir } from "node:fs/promises";
+import path from "node:path";
+import { readdir, stat } from "node:fs/promises";
 import type { BrowseEntry, BrowseResult } from "@/lib/types";
 
 export async function GET(req: NextRequest) {
@@ -7,9 +8,21 @@ export async function GET(req: NextRequest) {
   try {
     const dirents = await readdir(root, { withFileTypes: true });
     const entries: BrowseEntry[] = dirents
-      .filter((d) => d.isDirectory() && !d.name.startsWith("."))
-      .map((d) => ({ name: d.name, isDir: true }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .filter((d) => !d.name.startsWith("."))
+      .map((d) => ({ name: d.name, isDir: d.isDirectory() }))
+      .sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1));
+    // Attach file sizes (helps spot what is on the share before scanning).
+    await Promise.all(
+      entries.map(async (e) => {
+        if (e.isDir) return;
+        try {
+          const st = await stat(path.join(root, e.name));
+          e.size = st.size;
+        } catch {
+          // ignore unreadable entries
+        }
+      }),
+    );
     const result: BrowseResult = { path: root, entries };
     return NextResponse.json(result);
   } catch (err) {
