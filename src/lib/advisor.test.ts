@@ -21,8 +21,8 @@ describe("striping advisor", () => {
     ]);
     const a = adviseFile(file);
     expect(a?.kind).toBe("overstriped-small");
-    // Command keeps a unit of headroom: 3 stripes used+headroom → count 3.
-    expect(a!.command).toContain("--stripe-count 3");
+    // Command restripes to the width the file actually fills (2 of 4).
+    expect(a!.command).toContain("--stripe-count 2");
     expect(a!.command).toContain("--stripe-size 1M");
   });
 

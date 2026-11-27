@@ -27,11 +27,14 @@ function stripeUnitBytes(l: Layout): number {
   return 1024 ** 2;
 }
 
-/** Number of distinct stripes a file of this size writes under this layout. */
+/** Number of stripes a file of this size actually writes under this layout.
+ *  getstripe's yaml has no byte extents, so this is arithmetic, not measured:
+ *  stripes touched = min(stripe_count, ceil(size / stripe_size)). */
 function stripesUsed(file: FileStripeInfo): number {
-  if (file.stripes.length > 0) return file.stripes.length;
-  // Unplaced files still write a full stripe per OST the layout rotates over.
-  return Math.max(1, Math.ceil(file.size / stripeUnitBytes(file.layout)));
+  const l = file.layout;
+  const unit = stripeUnitBytes(l);
+  if (l.type === "raid0") return Math.min(Math.max(1, l.stripe_count), Math.ceil(file.size / unit));
+  return Math.max(1, Math.ceil(file.size / unit));
 }
 
 export function adviseFile(file: FileStripeInfo): Advice | null {
@@ -42,10 +45,7 @@ export function adviseFile(file: FileStripeInfo): Advice | null {
   if (l.type === "raid0" && l.stripe_count >= 2) {
     const unplaced = placed.length === 0;
     const wideEnough = file.size >= 2 * l.stripe_count * l.stripe_size;
-    if (!wideEnough && (
-      (unplaced && file.size >= 0 && file.size < l.stripe_size) ||
-      (!unplaced && file.size < l.stripe_size)
-    )) {
+    if (!wideEnough && file.size < l.stripe_size) {
       // File never fills even one stripe: only worth restriping if the size is
       // permanent (appending won't naturally use the extra OSTs anyway).
       return {
@@ -64,7 +64,7 @@ export function adviseFile(file: FileStripeInfo): Advice | null {
       return {
         kind: "overstriped-small",
         label: "overstriped",
-        detail: `only ${stripesUsed(file)} of ${l.stripe_count} stripes used — spread over ${placed.length} OSTs`,
+        detail: `only ${stripesUsed(file)} of ${l.stripe_count} stripes touched by this file's size`,
         command: commandIfPlaced(file, sizeFlagFor(l), String(neededCount(file))),
       };
     }
@@ -130,8 +130,9 @@ const LABELS: Record<AdviceKind, string> = {
 };
 
 function neededCount(file: FileStripeInfo): string {
-  // Leave one stripe of headroom so a modest append does not re-trigger advice.
-  return String(Math.max(1, stripesUsed(file) + 1));
+  // Suggest the exact width the file fills: one less re-triggers the badge,
+  // one more leaves permanent slack the next scan flags again.
+  return String(stripesUsed(file));
 }
 
 function sizeFlagFor(l: Layout): string {
