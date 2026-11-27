@@ -83,6 +83,10 @@ function migrateCommand(file: FileStripeInfo, targetOst: number): string {
     const sizeFlag = sizeM != null ? `--stripe-size ${sizeM}M` : "--stripe-size 1M";
     return `lfs migrate ${sizeFlag} --stripe-count ${count} --stripe-index ${targetOst} '${file.path}'`;
   }
+  if (l.type === "raid1") {
+    // Preserve mirror redundancy; migration regenerates a fresh layout.
+    return `lfs migrate --mirror-count ${l.mirror_count} --stripe-index ${targetOst} '${file.path}'`;
+  }
   return `lfs migrate --stripe-index ${targetOst} '${file.path}'`;
 }
 
