@@ -1,7 +1,28 @@
 export type Layout =
-  | { type: "raid0"; stripe_count: number; stripe_size: number; pool: string | null }
-  | { type: "raid1"; mirror_count: number; sub_overrides: Array<{ start: number; end: number; stripe_count: number; stripe_size: number; pool: string | null }> }
-  | { type: "raid6" | "raid10"; stripe_count: number; stripe_size: number; pool: string | null; parity?: number };
+  | {
+      type: "raid0";
+      stripe_count: number;
+      stripe_size: number;
+      pool: string | null;
+    }
+  | {
+      type: "raid1";
+      mirror_count: number;
+      sub_overrides: Array<{
+        start: number;
+        end: number;
+        stripe_count: number;
+        stripe_size: number;
+        pool: string | null;
+      }>;
+    }
+  | {
+      type: "raid6" | "raid10";
+      stripe_count: number;
+      stripe_size: number;
+      pool: string | null;
+      parity?: number;
+    };
 
 export interface StripeExtent {
   start: number;
@@ -19,7 +40,6 @@ export interface FileStripeInfo {
 }
 
 export interface OSTSummary {
-  /** Raw OST index */
   index: number;
   name: string | null;
   stripeCount: number;
@@ -44,7 +64,13 @@ export interface ScanStats {
 }
 
 export interface OSTStatisticalProfile {
-  perOST: Array<{ index: number; n: number; countPerFile: number; weightedBytes: number; countBytes: number }>;
+  perOST: Array<{
+    index: number;
+    n: number;
+    countPerFile: number;
+    weightedBytes: number;
+    countBytes: number;
+  }>;
   countSpread: Array<{ ost: number; counts: number[] }>;
   countVsBytesCorrelation: number;
   countVsBytesSlope: number;
@@ -52,7 +78,6 @@ export interface OSTStatisticalProfile {
   countCV: number;
 }
 
-/** Capacity snapshot for one OST, parsed from `lfs df` / `lfs df -i` (units: KiB). */
 export interface OSTDiskSpace {
   index: number;
   name: string;
@@ -72,9 +97,13 @@ export interface ScanResult {
   files: FileStripeInfo[];
   errors: ScanError[];
   ostNames: Record<number, string>;
-  /** Capacity per OST from `lfs df` (absent when lfs df is unavailable). */
   ostSpace?: OSTDiskSpace[];
-  byteDistributions: Array<{ mirror: number; ost: number; bytes: number[]; count: number }>;
+  byteDistributions: Array<{
+    mirror: number;
+    ost: number;
+    bytes: number[];
+    count: number;
+  }>;
   source: "live" | "simulated" | "import";
 }
 
@@ -107,7 +136,12 @@ export interface ScanPayload {
 export interface ScanStatsExtra {
   depthHistogram: Array<{ depth: number; value: number }>;
   stripeSizeHistogram: Array<{ bucket: string; value: number }>;
-  fileHistogram: Array<{ min: string; max: string; value: number; label: string }>;
+  fileHistogram: Array<{
+    min: string;
+    max: string;
+    value: number;
+    label: string;
+  }>;
   layoutHistogram: Array<{ layout: string; value: number }>;
   topDirs: Array<{ dir: string; size: number; files: number }>;
 }

@@ -10,23 +10,26 @@ export async function GET(req: NextRequest) {
     const entries: BrowseEntry[] = dirents
       .filter((d) => !d.name.startsWith("."))
       .map((d) => ({ name: d.name, isDir: d.isDirectory() }))
-      .sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1));
-    // Attach file sizes (helps spot what is on the share before scanning).
+      .sort((a, b) =>
+        a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1,
+      );
     await Promise.all(
       entries.map(async (e) => {
         if (e.isDir) return;
         try {
           const st = await stat(path.join(root, e.name));
           e.size = st.size;
-        } catch {
-          // ignore unreadable entries
-        }
+        } catch {}
       }),
     );
     const result: BrowseResult = { path: root, entries };
     return NextResponse.json(result);
   } catch (err) {
-    const result: BrowseResult = { path: root, entries: [], error: String(err) };
+    const result: BrowseResult = {
+      path: root,
+      entries: [],
+      error: String(err),
+    };
     return NextResponse.json(result, { status: 200 });
   }
 }

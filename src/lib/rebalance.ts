@@ -8,13 +8,9 @@ export interface RebalanceSuggestion {
 
 const MAX_FILES_PER_OST = 8;
 
-/**
- * Identifies the hottest OST and suggests `lfs migrate` commands that restripe
- * its heaviest scanned files toward the coolest OST. Capacity data (`lfs df`)
- * ranks OSTs by real fullness when present; scanned bytes are the fallback.
- * Pure client-side derivation — no extra lfs calls.
- */
-export function buildRebalanceSuggestions(result: ScanResult): RebalanceSuggestion[] {
+export function buildRebalanceSuggestions(
+  result: ScanResult,
+): RebalanceSuggestion[] {
   if (!result.files.length) return [];
   const space = new Map<number, OSTDiskSpace>();
   for (const s of result.ostSpace ?? []) space.set(s.index, s);
@@ -33,7 +29,7 @@ export function buildRebalanceSuggestions(result: ScanResult): RebalanceSuggesti
   const ranked = [...indices].sort((a, b) => {
     const key = (idx: number) => {
       const cap = space.get(idx);
-      // Real capacity dominates when known (3x weight), then scanned bytes.
+
       const capScore = cap ? cap.usePct * 3 : 0;
       const fileScore = scanned.get(idx) ?? 0;
       return capScore + fileScore / 1024 ** 2;
@@ -48,12 +44,14 @@ export function buildRebalanceSuggestions(result: ScanResult): RebalanceSuggesti
   const coolScanned = scanned.get(coolest) ?? 0;
   const hotUsePct = space.get(hottest)?.usePct;
   const coolUsePct = space.get(coolest)?.usePct;
-  // With live capacity data, trust only a real fullness gap; scanned-bytes skew
-  // alone is not enough because the "cool" OST may be nearly full in practice.
-  const haveCapacity = space.size >= 2 && hotUsePct !== undefined && coolUsePct !== undefined;
+
+  const haveCapacity =
+    space.size >= 2 && hotUsePct !== undefined && coolUsePct !== undefined;
   const bytesSkewed = hotScanned > coolScanned * 1.25;
   const capacitySkewed =
-    hotUsePct !== undefined && coolUsePct !== undefined && hotUsePct > coolUsePct + 5;
+    hotUsePct !== undefined &&
+    coolUsePct !== undefined &&
+    hotUsePct > coolUsePct + 5;
   if (haveCapacity ? !capacitySkewed : !bytesSkewed) return [];
 
   const label = space.get(hottest)?.name ?? `OST ${hottest}`;
@@ -78,13 +76,14 @@ function migrateCommand(file: FileStripeInfo, targetOst: number): string {
   const l = file.layout;
   if (l.type === "raid0" && l.stripe_count > 0 && l.stripe_size > 0) {
     const count = Math.max(1, l.stripe_count);
-    // Sizes that are not whole MiBs fall back to a safe 1M stripe size.
-    const sizeM = l.stripe_size % (1024 ** 2) === 0 ? l.stripe_size / 1024 ** 2 : null;
-    const sizeFlag = sizeM != null ? `--stripe-size ${sizeM}M` : "--stripe-size 1M";
+
+    const sizeM =
+      l.stripe_size % 1024 ** 2 === 0 ? l.stripe_size / 1024 ** 2 : null;
+    const sizeFlag =
+      sizeM != null ? `--stripe-size ${sizeM}M` : "--stripe-size 1M";
     return `lfs migrate ${sizeFlag} --stripe-count ${count} --stripe-index ${targetOst} '${file.path}'`;
   }
   if (l.type === "raid1") {
-    // Preserve mirror redundancy; migration regenerates a fresh layout.
     return `lfs migrate --mirror-count ${l.mirror_count} --stripe-index ${targetOst} '${file.path}'`;
   }
   return `lfs migrate --stripe-index ${targetOst} '${file.path}'`;

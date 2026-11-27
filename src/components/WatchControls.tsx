@@ -8,7 +8,11 @@ interface WatchControlsProps {
   onTick: () => Promise<void>;
 }
 
-export default function WatchControls({ root, busy, onTick }: WatchControlsProps) {
+export default function WatchControls({
+  root,
+  busy,
+  onTick,
+}: WatchControlsProps) {
   const [intervalSec, setIntervalSec] = useState(10);
   const [watching, setWatching] = useState(false);
   const [lastTick, setLastTick] = useState<number | null>(null);
@@ -18,21 +22,27 @@ export default function WatchControls({ root, busy, onTick }: WatchControlsProps
     await onTick();
   }, [onTick]);
 
-  // If no root is scanned yet, effective watching is off: derive it instead
-  // of syncing state in an effect (avoids cascading renders).
   const active = watching && !!root;
 
   useEffect(() => {
     if (!active) return;
-    const id = window.setInterval(() => {
-      if (!busy) void tick();
-    }, Math.max(3, intervalSec) * 1000);
+    const id = window.setInterval(
+      () => {
+        if (!busy) void tick();
+      },
+      Math.max(3, intervalSec) * 1000,
+    );
     return () => window.clearInterval(id);
   }, [active, busy, intervalSec, tick]);
 
   return (
     <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
-      {active && <span className="inline-block size-2 animate-pulse rounded-full bg-emerald-500" aria-hidden />}
+      {active && (
+        <span
+          className="inline-block size-2 animate-pulse rounded-full bg-emerald-500"
+          aria-hidden
+        />
+      )}
       <label className="flex items-center gap-1">
         watch
         <input
@@ -57,7 +67,11 @@ export default function WatchControls({ root, busy, onTick }: WatchControlsProps
         <option value={30}>30s</option>
         <option value={60}>60s</option>
       </select>
-      {lastTick && <span className="text-xs">last tick {new Date(lastTick).toLocaleTimeString()}</span>}
+      {lastTick && (
+        <span className="text-xs">
+          last tick {new Date(lastTick).toLocaleTimeString()}
+        </span>
+      )}
       {watching && !root && (
         <span className="text-xs text-zinc-400">scan a path first</span>
       )}

@@ -14,7 +14,9 @@ export function hasLfs(): boolean {
 
 export async function commandExists(name: string): Promise<boolean> {
   return new Promise((resolve) => {
-    const proc = spawn("which", [name], { stdio: ["ignore", "pipe", "ignore"] });
+    const proc = spawn("which", [name], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
     let out = "";
     proc.on("error", () => resolve(false));
     proc.on("close", (code) => resolve(code === 0 && out.trim().length > 0));
@@ -35,7 +37,10 @@ export async function isDirectory(path: string): Promise<boolean> {
   return !!s && s.isDirectory();
 }
 
-export function lfs(args: readonly string[], timeoutMs = 30_000): Promise<LfsResult> {
+export function lfs(
+  args: readonly string[],
+  timeoutMs = 30_000,
+): Promise<LfsResult> {
   return new Promise((resolve, reject) => {
     const proc = spawn("lfs", args, { stdio: ["ignore", "pipe", "pipe"] });
     const out: Buffer[] = [];
@@ -48,7 +53,11 @@ export function lfs(args: readonly string[], timeoutMs = 30_000): Promise<LfsRes
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve({ stdout, stderr: stderr || err.join("").slice(0, 100_000), ...result });
+      resolve({
+        stdout,
+        stderr: stderr || err.join("").slice(0, 100_000),
+        ...result,
+      });
     };
 
     const timer = setTimeout(() => {
@@ -63,13 +72,15 @@ export function lfs(args: readonly string[], timeoutMs = 30_000): Promise<LfsRes
       if (err.length < 256) err.push(chunk);
     });
     proc.on("close", (code, signal) => {
-      stdout = Buffer.concat(out).toString().slice(0, 4 * 1024 * 1024);
+      stdout = Buffer.concat(out)
+        .toString()
+        .slice(0, 4 * 1024 * 1024);
       stderr = Buffer.concat(err).toString().slice(0, 100_000);
       finish({ code, signal });
     });
     proc.on("error", (spawnErr) => {
       clearTimeout(timer);
-      settled = true; // avoid double-resolve before reject
+      settled = true;
       reject(spawnErr);
     });
   });

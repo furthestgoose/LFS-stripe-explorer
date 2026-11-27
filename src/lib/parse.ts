@@ -13,18 +13,18 @@ interface RawLine {
   value: string | null;
 }
 
-/** Splits text into indent/key/value triples, ignoring comments and blanks. */
 function preprocessLines(text: string): RawLine[] {
   const lines: RawLine[] = [];
   for (const line of text.split("\n")) {
     const noComment = line.split("#")[0];
     if (!noComment.trim()) continue;
-    // Tolerates YAML list markers ("- 0: {...}") and inline flow maps; flow
-    // entries become pseudo-nodes so nested stripes remain discoverable.
-    // Indentation depth only matters relative to neighbours, so odd indents
-    // (seen from some lfs builds) parse fine.
-    const match = noComment.match(/^(\s*)(?:-\s+)?(?:([A-Za-z0-9_]+)\s*:?\s*)?([\{].*)?$/);
-    const keyMatch = noComment.match(/^(\s*)(?:-\s+)?([A-Za-z0-9_]+):\s*(.*?)\s*$/);
+
+    const match = noComment.match(
+      /^(\s*)(?:-\s+)?(?:([A-Za-z0-9_]+)\s*:?\s*)?([\{].*)?$/,
+    );
+    const keyMatch = noComment.match(
+      /^(\s*)(?:-\s+)?([A-Za-z0-9_]+):\s*(.*?)\s*$/,
+    );
     if (!match && !keyMatch) continue;
     let value: string | null = null;
     let indent = match ? match[1].length : 0;
@@ -39,7 +39,7 @@ function preprocessLines(text: string): RawLine[] {
     if (value === "" || value === "~" || value === "''" || value === '""') {
       value = null;
     }
-    // lmm_* keys are emitted at file scope; indent noise must not bury them.
+
     if (key.startsWith("lmm_")) {
       lines.push({ indent: 0, key, value });
       continue;
@@ -61,40 +61,40 @@ function preprocessLines(text: string): RawLine[] {
 }
 
 function toInt(value: unknown): number {
-  if (typeof value === "number") return Number.isFinite(value) ? Math.trunc(value) : 0;
+  if (typeof value === "number")
+    return Number.isFinite(value) ? Math.trunc(value) : 0;
   if (typeof value !== "string") return 0;
   const parsed = Number.parseInt(value.trim(), 10);
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 function toBytes(value: unknown): number {
-  if (typeof value === "number") return Number.isFinite(value) ? Math.trunc(value) : 0;
+  if (typeof value === "number")
+    return Number.isFinite(value) ? Math.trunc(value) : 0;
   if (typeof value !== "string") return 0;
   const trimmed = value.trim();
   if (/^[+-]?\d+$/.test(trimmed)) return Number.parseInt(trimmed, 10);
   const m = trimmed.match(/^([\d.]+)\s*([KMGT])?/i);
   if (!m) return 0;
   const n = Number.parseFloat(m[1]);
-  const mult: Record<string, number> = { K: 1024, M: 1024 ** 2, G: 1024 ** 3, T: 1024 ** 4 };
+  const mult: Record<string, number> = {
+    K: 1024,
+    M: 1024 ** 2,
+    G: 1024 ** 3,
+    T: 1024 ** 4,
+  };
   const key = (m[2] ?? "").toUpperCase();
   const factor = mult[key];
   if (Number.isNaN(n) || factor === undefined) return 0;
   return Math.trunc(n * factor);
 }
 
+const OFFSET_KEY_RE =
+  /^stripe[o_.]?(offset|offsets|object_id|objs_id|obj_id|oid|object|objs|idx|index|ost|ost_idx)$/i;
 
-const OFFSET_KEY_RE = /^stripe[o_.]?(offset|offsets|object_id|objs_id|obj_id|oid|object|objs|idx|index|ost|ost_idx)$/i;
-
-/**
- * Finds the key carrying OST ids on a stripe node. Real lfs builds differ:
- * plain raid0 uses "stripe_offset" (or "stripe_idx"/"stripe_index"); some
- * emit "oid"/"idx" pairs; "stripe_ost" appears for single-OST layouts.
- * Falls back to any "oid" key since it is unambiguous on stripe nodes.
- */
 function findOffsetKey(obj: RawNode): string | undefined {
   const keys = Object.keys(obj);
   return (
-    // Plain lmm_objects entries carry the OST in l_ost_idx / ost_idx.
     keys.find((k) => k === "l_ost_idx" || k === "ost_idx") ??
     keys.find((k) => OFFSET_KEY_RE.test(k)) ??
     keys.find((k) => k.startsWith("stripe") && /idx$/i.test(k)) ??
@@ -111,17 +111,16 @@ function collectStripeNodes(node: unknown, out: RawNode[]): void {
   if (node === null || typeof node !== "object") return;
   const obj = node as RawNode;
   const keys = Object.keys(obj);
-  // Pure layout blocks (all lmm_*) are metadata, not stripe nodes — but they
-  // can wrap lmm_objects, which holds the real per-OST placements, so we must
-  // still descend into them. Regular files emit ONLY this shape.
+
   if (!keys.every((k) => /^lmm_/.test(k)) && findOffsetKey(obj)) out.push(obj);
   for (const value of Object.values(obj)) collectStripeNodes(value, out);
 }
 
-
 function buildTree(lines: RawLine[]): RawNode {
   const root: RawNode = {};
-  const stack: Array<{ indent: number; node: RawNode }> = [{ indent: -1, node: root }];
+  const stack: Array<{ indent: number; node: RawNode }> = [
+    { indent: -1, node: root },
+  ];
   for (const line of lines) {
     let targetNode: RawNode | string;
     while (stack.length > 1 && line.indent <= stack[stack.length - 1].indent) {
@@ -149,7 +148,6 @@ function buildTree(lines: RawLine[]): RawNode {
   return root;
 }
 
-
 interface ComponentRow {
   ost: number;
   mirror: number;
@@ -167,16 +165,13 @@ function readCount(node: RawNode, keys: string[]): number | null {
   return null;
 }
 
-/**
- * The layout (lmm_*) block includes lmm_stripe_offset / stripe_offset, which
- * describe which OST a *new* file starts on — not where this file's stripes
- * actually landed. Trust lmm_objects entries (or other nested nodes); only
- * fall back to those top-level hints when the output has no object list.
- */
 function hasObjectEntries(nodes: RawNode[]): boolean {
   return nodes.some((node) => {
-    if (Object.keys(node).some((k) => k === "l_ost_idx" || k === "ost_idx")) return true;
-    const nested = Object.values(node).filter((v) => v && typeof v === "object") as RawNode[];
+    if (Object.keys(node).some((k) => k === "l_ost_idx" || k === "ost_idx"))
+      return true;
+    const nested = Object.values(node).filter(
+      (v) => v && typeof v === "object",
+    ) as RawNode[];
     if (!nested.length) return false;
     return hasObjectEntries(nested);
   });
@@ -194,37 +189,43 @@ export function parseGetstripeYaml(text: string): ParsedStripeInfo | null {
   const components: ComponentRow[] = componentNodes
     .filter((node) => {
       if (!hasObjectEntries(componentNodes)) return true;
-      // With an object list present, a scalar top-level stripe_offset /
-      // lmm_stripe_offset is only the "next write starts here" hint, not a
-      // placed component — drop it. Real components carry extents.
+
       const offsetKey = findOffsetKey(node);
-      if (offsetKey !== "stripe_offset" && offsetKey !== "lmm_stripe_offset") return true;
-      // File-scope hints (incl. the root holding -1) have no extents; real
-      // component nodes (PFL, mirrors) do. Nested stripe objects are collected
-      // separately, so dropping the parent loses nothing.
-      const hasExtent = Object.keys(node).some((k) =>
-        /extent|stripe_start|stripe_end/.test(k) || k === "start" || k === "end",
+      if (offsetKey !== "stripe_offset" && offsetKey !== "lmm_stripe_offset")
+        return true;
+
+      const hasExtent = Object.keys(node).some(
+        (k) =>
+          /extent|stripe_start|stripe_end/.test(k) ||
+          k === "start" ||
+          k === "end",
       );
       return hasExtent;
     })
     .flatMap((node): ComponentRow[] => {
-    const mirrorKey = ["mirror_id", "mirror", "mirrored_id"].find((k) => node[k] !== undefined);
-    const mirror = mirrorKey ? toInt(node[mirrorKey]) : -1;
-    const offsetKey = findOffsetKey(node);
-    const rawOffsets = offsetKey ? node[offsetKey] : undefined;
-    const offsets = Array.isArray(rawOffsets)
-      ? rawOffsets.map((v) => toInt(v))
-      : typeof rawOffsets === "string" && rawOffsets.includes(",")
-        ? // Wide layouts may list every component's OST on one line.
-          rawOffsets.split(",").map((v) => toInt(v.trim()))
-        : [toInt(rawOffsets)];
-    const start = readCount(node, ["stripe_start", "start_extent", "start", "fc_start"]);
-    let end = readCount(node, ["stripe_end", "end_extent", "end", "fc_end"]);
-    if (end !== null && end < 0) {
-      end = 1_000_000_000; 
-    }
-    return offsets.map((ost) => ({ ost, mirror, start, end }));
-  });
+      const mirrorKey = ["mirror_id", "mirror", "mirrored_id"].find(
+        (k) => node[k] !== undefined,
+      );
+      const mirror = mirrorKey ? toInt(node[mirrorKey]) : -1;
+      const offsetKey = findOffsetKey(node);
+      const rawOffsets = offsetKey ? node[offsetKey] : undefined;
+      const offsets = Array.isArray(rawOffsets)
+        ? rawOffsets.map((v) => toInt(v))
+        : typeof rawOffsets === "string" && rawOffsets.includes(",")
+          ? rawOffsets.split(",").map((v) => toInt(v.trim()))
+          : [toInt(rawOffsets)];
+      const start = readCount(node, [
+        "stripe_start",
+        "start_extent",
+        "start",
+        "fc_start",
+      ]);
+      let end = readCount(node, ["stripe_end", "end_extent", "end", "fc_end"]);
+      if (end !== null && end < 0) {
+        end = 1_000_000_000;
+      }
+      return offsets.map((ost) => ({ ost, mirror, start, end }));
+    });
 
   if (!components.length) {
     const textRows = extractComponentsFromText(text);
@@ -239,7 +240,12 @@ export function parseGetstripeYaml(text: string): ParsedStripeInfo | null {
   for (const row of components) {
     const start = row.start ?? cursor;
     const end = row.end !== null ? row.end : start + 1;
-    stripes.push({ start: Math.max(start, 0), end: Math.max(end, start + 1), ost: row.ost, mirror: row.mirror });
+    stripes.push({
+      start: Math.max(start, 0),
+      end: Math.max(end, start + 1),
+      ost: row.ost,
+      mirror: row.mirror,
+    });
     cursor = row.end ?? end;
   }
   if (!stripes.length && layout.type === "raid0" && layout.stripe_count > 0) {
@@ -252,7 +258,8 @@ export function parseGetstripeYaml(text: string): ParsedStripeInfo | null {
 
 function extractComponentsFromText(text: string): StripeExtent[] {
   const rows: StripeExtent[] = [];
-  const re = /ost\s*>\s*(\d+)\s*:\s*oid\s*[-=]?\s*(\d+)\s*[:.]?\s*(?:idx\s*[:=]?\s*)?(\d+)/gi;
+  const re =
+    /ost\s*>\s*(\d+)\s*:\s*oid\s*[-=]?\s*(\d+)\s*[:.]?\s*(?:idx\s*[:=]?\s*)?(\d+)/gi;
   let m: RegExpExecArray | null = re.exec(text);
   let cursor = 0;
   while (m !== null) {
@@ -285,17 +292,36 @@ function deriveLayoutFromText(text: string): Layout {
 
   const countMatch = text.match(/lmm_stripe_count\s*:\s*(-?\d+)/i);
   const count = countMatch ? Number.parseInt(countMatch[1], 10) : 0;
-  if (/layout_variant\s*:\s*progressive/i.test(lower) || /-2\b/.test(countMatch?.[1] ?? "")) {
-    return { type: "raid1", mirror_count: 1, sub_overrides: collectSubOverrides(text) };
+  if (
+    /layout_variant\s*:\s*progressive/i.test(lower) ||
+    /-2\b/.test(countMatch?.[1] ?? "")
+  ) {
+    return {
+      type: "raid1",
+      mirror_count: 1,
+      sub_overrides: collectSubOverrides(text),
+    };
   }
-  return { type: "raid0", stripe_count: count || 1, stripe_size: stripeSize, pool };
+  return {
+    type: "raid0",
+    stripe_count: count || 1,
+    stripe_size: stripeSize,
+    pool,
+  };
 }
 
-type SubOverride = { start: number; end: number; stripe_count: number; stripe_size: number; pool: string | null };
+type SubOverride = {
+  start: number;
+  end: number;
+  stripe_count: number;
+  stripe_size: number;
+  pool: string | null;
+};
 
 function collectSubOverrides(text: string): SubOverride[] {
   const overrides: SubOverride[] = [];
-  const re = /(?:^|\n)\s*-\s*\n?\s*start(?:_extent)?\s*:\s*(\d+)\s*\n\s*end(?:_extent)?\s*:\s*(\d+)(?:\s*\n\s*stripe_count\s*:\s*(-?\d+))?(?:\s*\n\s*stripe_size\s*:\s*([^\s#]+))?/gi;
+  const re =
+    /(?:^|\n)\s*-\s*\n?\s*start(?:_extent)?\s*:\s*(\d+)\s*\n\s*end(?:_extent)?\s*:\s*(\d+)(?:\s*\n\s*stripe_count\s*:\s*(-?\d+))?(?:\s*\n\s*stripe_size\s*:\s*([^\s#]+))?/gi;
   let m: RegExpExecArray | null = re.exec(text);
   while (m !== null) {
     const start = Number.parseInt(m[1], 10);
@@ -316,7 +342,8 @@ function collectSubOverrides(text: string): SubOverride[] {
 
 export function parseLegacyOutput(text: string): ParsedStripeInfo {
   const stripes: StripeExtent[] = [];
-  const re = /ost\s*>\s*(\d+)\s*:\s*oid\s*[-=]?\s*(\d+)\s*(?:id?x\s*[-=]?\s*)?(\d+)/gi;
+  const re =
+    /ost\s*>\s*(\d+)\s*:\s*oid\s*[-=]?\s*(\d+)\s*(?:id?x\s*[-=]?\s*)?(\d+)/gi;
   let m: RegExpExecArray | null = re.exec(text);
   let cursor = 0;
   while (m !== null) {
@@ -327,9 +354,16 @@ export function parseLegacyOutput(text: string): ParsedStripeInfo {
     }
     m = re.exec(text);
   }
-  return { layout: { type: "raid0", stripe_count: stripes.length || 1, stripe_size: 0, pool: null }, stripes };
+  return {
+    layout: {
+      type: "raid0",
+      stripe_count: stripes.length || 1,
+      stripe_size: 0,
+      pool: null,
+    },
+    stripes,
+  };
 }
-
 
 export function inferOstCount(stripes: StripeExtent[]): number {
   const max = stripes.reduce((acc, s) => Math.max(acc, s.ost), -1);

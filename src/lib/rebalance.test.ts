@@ -8,7 +8,12 @@ function file(path: string, sizeMb: number, ost: number): FileStripeInfo {
   return {
     path,
     size: sizeMb * 1024 ** 2,
-    layout: { type: "raid0", stripe_count: 2, stripe_size: 1048576, pool: null },
+    layout: {
+      type: "raid0",
+      stripe_count: 2,
+      stripe_size: 1048576,
+      pool: null,
+    },
     stripes: [
       { start: 0, end: half, ost, mirror: -1 },
       { start: half, end: sizeMb, ost, mirror: -1 },
@@ -36,7 +41,12 @@ describe("buildRebalanceSuggestions", () => {
   it("suggests moving large files to the coolest OST on a skewed scan", () => {
     const res = finalizeScan(
       "/x",
-      [file("/heavy-0", 400, 0), file("/heavy-1", 380, 0), file("/heavy-2", 360, 0), file("/light", 20, 1)],
+      [
+        file("/heavy-0", 400, 0),
+        file("/heavy-1", 380, 0),
+        file("/heavy-2", 360, 0),
+        file("/light", 20, 1),
+      ],
       [],
       1,
       0,
@@ -62,17 +72,37 @@ describe("buildRebalanceSuggestions", () => {
   });
 
   it("trusts capacity over scanned bytes when lfs df data is present", () => {
-    const res = finalizeScan("/x", [file("/a", 400, 0), file("/b", 20, 1)], [], 1, 0, "simulated");
-    const balancedCapacity: ScanResult = { ...res, ostSpace: [space(0, 30), space(1, 29)] };
+    const res = finalizeScan(
+      "/x",
+      [file("/a", 400, 0), file("/b", 20, 1)],
+      [],
+      1,
+      0,
+      "simulated",
+    );
+    const balancedCapacity: ScanResult = {
+      ...res,
+      ostSpace: [space(0, 30), space(1, 29)],
+    };
     expect(buildRebalanceSuggestions(balancedCapacity)).toHaveLength(0);
-    const skewedCapacity: ScanResult = { ...res, ostSpace: [space(0, 90), space(1, 10)] };
+    const skewedCapacity: ScanResult = {
+      ...res,
+      ostSpace: [space(0, 90), space(1, 10)],
+    };
     const suggestions = buildRebalanceSuggestions(skewedCapacity);
     expect(suggestions).toHaveLength(1);
     expect(suggestions[0].label).toContain("90% full");
   });
 
   it("returns no suggestions when everything is on one OST", () => {
-    const res = finalizeScan("/x", [file("/a", 400, 0), file("/b", 300, 0)], [], 1, 0, "simulated");
+    const res = finalizeScan(
+      "/x",
+      [file("/a", 400, 0), file("/b", 300, 0)],
+      [],
+      1,
+      0,
+      "simulated",
+    );
     expect(buildRebalanceSuggestions(res)).toHaveLength(0);
   });
 });

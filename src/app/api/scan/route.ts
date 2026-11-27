@@ -19,35 +19,45 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "missing root" }, { status: 400 });
   }
   if (body.mode === "demo") {
-    const payload: ScanPayload = { root, result: demoScan(), note: "simulated dataset (no filesystem access)" };
+    const payload: ScanPayload = {
+      root,
+      result: demoScan(),
+      note: "simulated dataset (no filesystem access)",
+    };
     return NextResponse.json(payload);
   }
   if (!(await isDirectory(root))) {
-    return NextResponse.json({ error: `not a directory: ${root}` }, { status: 400 });
+    return NextResponse.json(
+      { error: `not a directory: ${root}` },
+      { status: 400 },
+    );
   }
   if (!(await commandExists("lfs"))) {
     return NextResponse.json(
       {
-        error: "lfs not found on this host; run on a Lustre client or use demo mode",
-        hint: "POST {\"root\": \"/lustre/dir\", \"mode\": \"demo\"} for a simulated dataset",
+        error:
+          "lfs not found on this host; run on a Lustre client or use demo mode",
+        hint: 'POST {"root": "/lustre/dir", "mode": "demo"} for a simulated dataset',
       },
       { status: 501 },
     );
   }
   try {
     const result: ScanResult = await scanDirectory(root);
-    // Enrich with live-capacity data; failure here must not fail the scan.
     const space = await collectOstSpace(root);
     if (space.length) {
       result.ostSpace = space;
       for (const row of space) {
-        // lfs df names like lustre-OST0003_UUID double as human-readable names.
-        if ((result.ostNames[row.index] ?? "") === "") result.ostNames[row.index] = row.name;
+        if ((result.ostNames[row.index] ?? "") === "")
+          result.ostNames[row.index] = row.name;
       }
     }
     const payload: ScanPayload = { root, result };
     return NextResponse.json(payload);
   } catch (err) {
-    return NextResponse.json({ error: `scan failed: ${String(err)}` }, { status: 500 });
+    return NextResponse.json(
+      { error: `scan failed: ${String(err)}` },
+      { status: 500 },
+    );
   }
 }

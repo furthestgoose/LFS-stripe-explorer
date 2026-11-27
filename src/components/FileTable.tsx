@@ -1,7 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { adviseFile, adviceSummary, collectAdvice, type Advice, type AdviceKind } from "@/lib/advisor";
+import {
+  adviseFile,
+  adviceSummary,
+  collectAdvice,
+  type Advice,
+  type AdviceKind,
+} from "@/lib/advisor";
 import type { FileStripeInfo, ScanResult } from "@/lib/types";
 
 export default function FileTable({
@@ -19,7 +25,9 @@ export default function FileTable({
 
   const filtered = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    return q ? result.files.filter((f) => f.path.toLowerCase().includes(q)) : result.files;
+    return q
+      ? result.files.filter((f) => f.path.toLowerCase().includes(q))
+      : result.files;
   }, [result, filter]);
 
   const pages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -31,7 +39,12 @@ export default function FileTable({
     <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-          Files {filtered.length !== result.files.length && <span className="text-zinc-500">({filtered.length}/{result.files.length})</span>}
+          Files{" "}
+          {filtered.length !== result.files.length && (
+            <span className="text-zinc-500">
+              ({filtered.length}/{result.files.length})
+            </span>
+          )}
         </h2>
         <input
           className="w-64 rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100"
@@ -67,22 +80,42 @@ export default function FileTable({
           </thead>
           <tbody>
             {shown.map((f) => (
-              <FileRow key={f.path} file={f} advice={adviseFile(f, ostCapacity)} onSelect={onSelect} />
+              <FileRow
+                key={f.path}
+                file={f}
+                advice={adviseFile(f, ostCapacity)}
+                onSelect={onSelect}
+              />
             ))}
           </tbody>
         </table>
       </div>
       <div className="mt-3 flex items-center justify-between text-sm text-zinc-500">
-        <span>page {safePage + 1} / {pages}</span>
+        <span>
+          page {safePage + 1} / {pages}
+        </span>
         <div className="flex gap-2">
-          <button type="button" disabled={safePage === 0} onClick={() => setPage(safePage - 1)} className="rounded border border-zinc-300 px-2 py-1 disabled:opacity-40 dark:border-zinc-700">prev</button>
-          <button type="button" disabled={safePage >= pages - 1} onClick={() => setPage(safePage + 1)} className="rounded border border-zinc-300 px-2 py-1 disabled:opacity-40 dark:border-zinc-700">next</button>
+          <button
+            type="button"
+            disabled={safePage === 0}
+            onClick={() => setPage(safePage - 1)}
+            className="rounded border border-zinc-300 px-2 py-1 disabled:opacity-40 dark:border-zinc-700"
+          >
+            prev
+          </button>
+          <button
+            type="button"
+            disabled={safePage >= pages - 1}
+            onClick={() => setPage(safePage + 1)}
+            className="rounded border border-zinc-300 px-2 py-1 disabled:opacity-40 dark:border-zinc-700"
+          >
+            next
+          </button>
         </div>
       </div>
     </section>
   );
 }
-
 
 function fmtBytes(n: number): string {
   if (!n) return "0";
@@ -104,22 +137,46 @@ function layoutLabel(f: FileStripeInfo): string {
 }
 
 const ADVICE_STYLE: Record<AdviceKind, string> = {
-  "overstriped-tiny": "bg-zinc-100 text-zinc-700 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700",
-  "overstriped-small": "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
-  "wide-mirrors": "bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200 dark:bg-fuchsia-950 dark:text-fuchsia-200 dark:border-fuchsia-800",
-  "oversized-mirrors": "bg-zinc-100 text-zinc-700 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700",
-  "hot-single-ost": "bg-red-100 text-red-800 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800",
+  "overstriped-tiny":
+    "bg-zinc-100 text-zinc-700 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700",
+  "overstriped-small":
+    "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950 dark:text-amber-200 dark:border-amber-800",
+  "wide-mirrors":
+    "bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200 dark:bg-fuchsia-950 dark:text-fuchsia-200 dark:border-fuchsia-800",
+  "oversized-mirrors":
+    "bg-zinc-100 text-zinc-700 border-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:border-zinc-700",
+  "hot-single-ost":
+    "bg-red-100 text-red-800 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800",
 };
 
-function FileRow({ file, advice, onSelect }: { file: FileStripeInfo; advice: Advice | null; onSelect?: (f: FileStripeInfo) => void }) {
-  const osts = useMemo(() => [...new Set(file.stripes.filter((s) => s.ost >= 0).map((s) => s.ost))].sort((a, b) => a - b), [file]);
+function FileRow({
+  file,
+  advice,
+  onSelect,
+}: {
+  file: FileStripeInfo;
+  advice: Advice | null;
+  onSelect?: (f: FileStripeInfo) => void;
+}) {
+  const osts = useMemo(
+    () =>
+      [
+        ...new Set(file.stripes.filter((s) => s.ost >= 0).map((s) => s.ost)),
+      ].sort((a, b) => a - b),
+    [file],
+  );
   return (
     <tr
       className="cursor-pointer border-t border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/60"
       onClick={() => onSelect?.(file)}
       title="click for stripe detail"
     >
-      <td className="max-w-[28rem] truncate px-2 py-1 font-mono text-xs" title={file.path}>{file.path}</td>
+      <td
+        className="max-w-[28rem] truncate px-2 py-1 font-mono text-xs"
+        title={file.path}
+      >
+        {file.path}
+      </td>
       <td className="px-2 py-1 font-mono text-xs">{fmtBytes(file.size)}</td>
       <td className="px-2 py-1 font-mono text-xs">{layoutLabel(file)}</td>
       <td className="px-2 py-1 font-mono text-xs">{file.stripes.length}</td>
@@ -128,7 +185,9 @@ function FileRow({ file, advice, onSelect }: { file: FileStripeInfo; advice: Adv
         {advice && (
           <span
             className={`cursor-help rounded border px-1.5 py-0.5 text-[10px] ${ADVICE_STYLE[advice.kind]}`}
-            title={advice.detail + (advice.command ? ` — ${advice.command}` : "")}
+            title={
+              advice.detail + (advice.command ? ` — ${advice.command}` : "")
+            }
           >
             {advice.label}
           </span>

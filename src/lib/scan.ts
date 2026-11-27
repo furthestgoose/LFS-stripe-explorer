@@ -35,12 +35,24 @@ export async function scanDirectory(root: string): Promise<ScanResult> {
         try {
           const res = await lfs(["getstripe", "--yaml", path], 30_000);
           if (res.code !== 0) {
-            return { path, size: wf.size, info: null, raw: res.stdout, err: res.stderr.slice(0, 500) };
+            return {
+              path,
+              size: wf.size,
+              info: null,
+              raw: res.stdout,
+              err: res.stderr.slice(0, 500),
+            };
           }
           const info = parseGetstripeYaml(res.stdout);
           return { path, size: wf.size, info, raw: res.stdout, err: null };
         } catch (err) {
-          return { path, size: wf.size, info: null, raw: null, err: String(err) };
+          return {
+            path,
+            size: wf.size,
+            info: null,
+            raw: null,
+            err: String(err),
+          };
         }
       }),
     );
@@ -59,7 +71,14 @@ export async function scanDirectory(root: string): Promise<ScanResult> {
     }
   }
 
-  return finalizeScan(root, files, errors, dirCount, Date.now() - started, "live");
+  return finalizeScan(
+    root,
+    files,
+    errors,
+    dirCount,
+    Date.now() - started,
+    "live",
+  );
 }
 
 interface WalkedFile {
@@ -67,9 +86,13 @@ interface WalkedFile {
   size: number;
 }
 
-async function collectFiles(root: string): Promise<{ files: WalkedFile[]; dirCount: number }> {
+async function collectFiles(
+  root: string,
+): Promise<{ files: WalkedFile[]; dirCount: number }> {
   const out: WalkedFile[] = [];
-  const queue: Array<{ path: string; depth: number }> = [{ path: root, depth: 0 }];
+  const queue: Array<{ path: string; depth: number }> = [
+    { path: root, depth: 0 },
+  ];
   let dirCount = 0;
   while (queue.length && out.length < MAX_FILES) {
     const { path, depth } = queue.shift()!;
@@ -91,16 +114,13 @@ async function collectFiles(root: string): Promise<{ files: WalkedFile[]; dirCou
       }
     }
   }
-  // Stat in bounded batches so a huge tree does not flood the event loop.
   for (let i = 0; i < out.length; i += 512) {
     await Promise.all(
       out.slice(i, i + 512).map(async (f) => {
         try {
           const st = await stat(f.path);
           f.size = st.size;
-        } catch {
-          // file vanished mid-scan; leave size 0
-        }
+        } catch {}
       }),
     );
   }
@@ -127,7 +147,12 @@ export function finalizeScan(
   let unplacedStripes = 0;
   const layouts: Record<string, number> = {};
   const countSpread = new Map<number, number[]>();
-  const byteDistributions: Array<{ mirror: number; ost: number; bytes: number[]; count: number }> = [];
+  const byteDistributions: Array<{
+    mirror: number;
+    ost: number;
+    bytes: number[];
+    count: number;
+  }> = [];
 
   const sizeByPath = new Map<string, number>();
   for (const file of files) {
@@ -141,7 +166,10 @@ export function finalizeScan(
     layouts[key] = (layouts[key] ?? 0) + 1;
     totalStripes += file.stripes.length;
 
-    const perMirrorOst = new Map<string, { ost: number; count: number; bytes: number }>();
+    const perMirrorOst = new Map<
+      string,
+      { ost: number; count: number; bytes: number }
+    >();
     for (const stripe of file.stripes) {
       if (stripe.ost < 0) {
         unplacedStripes += 1;
@@ -164,7 +192,9 @@ export function finalizeScan(
       });
     }
     for (const entry of perMirrorOst.values()) {
-      let dist = byteDistributions.find((d) => d.ost === entry.ost && d.mirror === -1);
+      let dist = byteDistributions.find(
+        (d) => d.ost === entry.ost && d.mirror === -1,
+      );
       if (!dist) {
         dist = { mirror: -1, ost: entry.ost, bytes: [], count: 0 };
         byteDistributions.push(dist);
@@ -192,7 +222,15 @@ export function finalizeScan(
     byteDistributions,
     statsExtra: buildStatsExtra(layouts, files),
     ostProfile: buildOstProfile(tallies, countSpread),
-    stats: buildStats(files, tallies, totalSize, totalStripes, unplacedStripes, elapsedMs, layouts),
+    stats: buildStats(
+      files,
+      tallies,
+      totalSize,
+      totalStripes,
+      unplacedStripes,
+      elapsedMs,
+      layouts,
+    ),
   };
 }
 
@@ -208,8 +246,8 @@ function layoutKey(layout: FileStripeInfo["layout"]): string {
 
 function formatStripeSize(bytes: number): string {
   if (!bytes) return "default";
-  if (bytes % (1024 ** 3) === 0) return `${bytes / 1024 ** 3}G`;
-  if (bytes % (1024 ** 2) === 0) return `${bytes / 1024 ** 2}M`;
+  if (bytes % 1024 ** 3 === 0) return `${bytes / 1024 ** 3}G`;
+  if (bytes % 1024 ** 2 === 0) return `${bytes / 1024 ** 2}M`;
   if (bytes % 1024 === 0) return `${bytes / 1024}K`;
   return String(bytes);
 }
@@ -236,8 +274,12 @@ function buildStats(
   const counts = ostIndices.map((idx) => tallies.get(idx)?.components ?? 0);
   const minPerOST = counts.length ? Math.min(...counts) : 0;
   const maxPerOST = counts.length ? Math.max(...counts) : 0;
-  const mean = counts.length ? counts.reduce((a, b) => a + b, 0) / counts.length : 0;
-  const stdDev = Math.sqrt(counts.reduce((acc, c) => acc + (c - mean) ** 2, 0) / (counts.length || 1));
+  const mean = counts.length
+    ? counts.reduce((a, b) => a + b, 0) / counts.length
+    : 0;
+  const stdDev = Math.sqrt(
+    counts.reduce((acc, c) => acc + (c - mean) ** 2, 0) / (counts.length || 1),
+  );
   const meanFileSize = files.length ? totalSize / files.length : 0;
   const meanStripeSize = files.length
     ? files.reduce((acc, f) => acc + stripeSizeOf(f), 0) / files.length
@@ -270,7 +312,11 @@ function buildOstProfile(
     return {
       index: idx,
       n: tally?.files.size ?? 0,
-      countPerFile: tally ? (tally.files.size ? tally.components / tally.files.size : 0) : 0,
+      countPerFile: tally
+        ? tally.files.size
+          ? tally.components / tally.files.size
+          : 0
+        : 0,
       weightedBytes: bytesList[i],
       countBytes: tally?.components ?? 0,
     };
@@ -290,7 +336,8 @@ function buildOstProfile(
       varCount += (perOST[i].countBytes - meanCount) ** 2;
       varBytes += (bytesList[i] - meanBytes) ** 2;
     }
-    correlation = varCount > 0 && varBytes > 0 ? cov / Math.sqrt(varCount * varBytes) : 0;
+    correlation =
+      varCount > 0 && varBytes > 0 ? cov / Math.sqrt(varCount * varBytes) : 0;
     slope = varCount > 0 ? cov / varCount : 0;
   }
 
@@ -309,7 +356,10 @@ function buildOstProfile(
 
   return {
     perOST,
-    countSpread: indices.map((idx) => ({ ost: idx, counts: countSpread.get(idx) ?? [] })),
+    countSpread: indices.map((idx) => ({
+      ost: idx,
+      counts: countSpread.get(idx) ?? [],
+    })),
     countVsBytesCorrelation: correlation,
     countVsBytesSlope: slope,
     countGini: gini,
@@ -320,7 +370,9 @@ function buildOstProfile(
 function stdDevOf(values: number[]): number {
   if (!values.length) return 0;
   const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  return Math.sqrt(values.reduce((acc, v) => acc + (v - mean) ** 2, 0) / values.length);
+  return Math.sqrt(
+    values.reduce((acc, v) => acc + (v - mean) ** 2, 0) / values.length,
+  );
 }
 
 function buildStatsExtra(
@@ -329,7 +381,12 @@ function buildStatsExtra(
 ): ScanStatsExtra {
   const depthHistogram: Array<{ depth: number; value: number }> = [];
   const stripeSizeHistogram: Array<{ bucket: string; value: number }> = [];
-  const fileHistogram: Array<{ min: string; max: string; value: number; label: string }> = [];
+  const fileHistogram: Array<{
+    min: string;
+    max: string;
+    value: number;
+    label: string;
+  }> = [];
   const layoutHistogram = Object.entries(layouts)
     .map(([layout, value]) => ({ layout, value }))
     .sort((a, b) => b.value - a.value);
@@ -340,10 +397,19 @@ function buildStatsExtra(
     { min: 1024 ** 3, max: 1024 ** 4, label: "1 GiB - 16 GiB" },
     { min: 1024 ** 4, max: Number.MAX_SAFE_INTEGER, label: "> 16 GiB" },
   ];
-  for (const bucket of sizeBuckets) fileHistogram.push({ min: String(bucket.min), max: String(bucket.max), value: 0, label: bucket.label });
+  for (const bucket of sizeBuckets)
+    fileHistogram.push({
+      min: String(bucket.min),
+      max: String(bucket.max),
+      value: 0,
+      label: bucket.label,
+    });
   const depthCounts = new Map<number, number>();
   const stripeSizes = new Map<string, number>();
-  const topDirs = new Map<string, { dir: string; size: number; files: number }>();
+  const topDirs = new Map<
+    string,
+    { dir: string; size: number; files: number }
+  >();
   for (const file of files) {
     const depth = file.path.split("/").filter(Boolean).length;
     depthCounts.set(depth, (depthCounts.get(depth) ?? 0) + 1);
@@ -359,10 +425,14 @@ function buildStatsExtra(
     agg.files += 1;
     topDirs.set(parent, agg);
   }
-  for (const [depth, value] of [...depthCounts.entries()].sort((a, b) => a[0] - b[0])) {
+  for (const [depth, value] of [...depthCounts.entries()].sort(
+    (a, b) => a[0] - b[0],
+  )) {
     depthHistogram.push({ depth, value });
   }
-  for (const [bucket, value] of [...stripeSizes.entries()].sort((a, b) => bucketOrder(a[0]) - bucketOrder(b[0]))) {
+  for (const [bucket, value] of [...stripeSizes.entries()].sort(
+    (a, b) => bucketOrder(a[0]) - bucketOrder(b[0]),
+  )) {
     stripeSizeHistogram.push({ bucket, value });
   }
   return {

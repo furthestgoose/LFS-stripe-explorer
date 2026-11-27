@@ -7,7 +7,12 @@ function file(path: string, size: number, osts: number[]): FileStripeInfo {
   return {
     path,
     size,
-    layout: { type: "raid0", stripe_count: Math.max(1, osts.length), stripe_size: 1048576, pool: null },
+    layout: {
+      type: "raid0",
+      stripe_count: Math.max(1, osts.length),
+      stripe_size: 1048576,
+      pool: null,
+    },
     stripes: osts.map((ost, i) => ({ start: i, end: i, ost, mirror: 0 })),
     raw: null,
   };
@@ -31,8 +36,21 @@ function result(files: FileStripeInfo[]): ScanResult {
       layouts: {},
       elapsedMs: 1,
     },
-    statsExtra: { depthHistogram: [], stripeSizeHistogram: [], fileHistogram: [], layoutHistogram: [], topDirs: [] },
-    ostProfile: { perOST: [], countSpread: [], countVsBytesCorrelation: 0, countVsBytesSlope: 0, countGini: 0, countCV: 0 },
+    statsExtra: {
+      depthHistogram: [],
+      stripeSizeHistogram: [],
+      fileHistogram: [],
+      layoutHistogram: [],
+      topDirs: [],
+    },
+    ostProfile: {
+      perOST: [],
+      countSpread: [],
+      countVsBytesCorrelation: 0,
+      countVsBytesSlope: 0,
+      countGini: 0,
+      countCV: 0,
+    },
     files,
     errors: [],
     ostNames: {},
@@ -43,12 +61,19 @@ function result(files: FileStripeInfo[]): ScanResult {
 
 describe("filesCsv", () => {
   it("emits one row per file with comma-joined OST list", () => {
-    const csv = filesCsv(result([file("/data/a", 1024, [0, 1]), file("/data/b", 5, [-1])]));
+    const csv = filesCsv(
+      result([file("/data/a", 1024, [0, 1]), file("/data/b", 5, [-1])]),
+    );
     const lines = csv.trimEnd().split("\n");
-    expect(lines[0]).toBe("path,size_bytes,size_human,layout,stripe_count,stripe_size,stripes_used,osts");
-    expect(lines[1]).toBe("/data/a,1024,1.0 KiB,raid0 count=2 size=1048576,2,1048576,2,0;1");
-    // Unplaced stripe (ost -1) still counts in stripes_used but is absent from osts.
-    expect(lines[2]).toBe("/data/b,5,5 B,raid0 count=1 size=1048576,1,1048576,1,");
+    expect(lines[0]).toBe(
+      "path,size_bytes,size_human,layout,stripe_count,stripe_size,stripes_used,osts",
+    );
+    expect(lines[1]).toBe(
+      "/data/a,1024,1.0 KiB,raid0 count=2 size=1048576,2,1048576,2,0;1",
+    );
+    expect(lines[2]).toBe(
+      "/data/b,5,5 B,raid0 count=1 size=1048576,1,1048576,1,",
+    );
   });
 });
 

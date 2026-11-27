@@ -3,11 +3,21 @@ import { buildTree, topOsts, type TreeNode } from "./tree";
 import type { FileStripeInfo, StripeExtent } from "./types";
 
 function file(path: string, size: number, osts: number[]): FileStripeInfo {
-  const stripes: StripeExtent[] = osts.map((ost, i) => ({ start: i, end: i, ost, mirror: 0 }));
+  const stripes: StripeExtent[] = osts.map((ost, i) => ({
+    start: i,
+    end: i,
+    ost,
+    mirror: 0,
+  }));
   return {
     path,
     size,
-    layout: { type: "raid0", stripe_count: Math.max(1, osts.length), stripe_size: 1048576, pool: null },
+    layout: {
+      type: "raid0",
+      stripe_count: Math.max(1, osts.length),
+      stripe_size: 1048576,
+      pool: null,
+    },
     stripes,
     raw: null,
   };
@@ -40,9 +50,6 @@ describe("buildTree", () => {
   });
 
   it("normalizes demo-style paths that omit the root prefix", () => {
-    // Demo files live under root /lustre but carry paths like /simulations/big;
-    // the rollup must still hang them under the root node rather than creating
-    // a phantom /simulations tree above it.
     const trees = buildTree("/lustre", [file("/simulations/big", 10, [0])]);
     expect(trees.map((n) => n.path).sort()).toEqual(["", "simulations"]);
     const root = trees.find((n: TreeNode) => n.path === "")!;

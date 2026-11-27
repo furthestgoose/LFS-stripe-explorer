@@ -38,7 +38,12 @@ ost>1: oid=1 idx=1
 describe("parseGetstripeYaml", () => {
   it("parses plain raid0 layout with two stripes", () => {
     const info = parseGetstripeYaml(RAID0_YAML)!;
-    expect(info.layout).toEqual({ type: "raid0", stripe_count: 2, stripe_size: 1048576, pool: "fastpool" });
+    expect(info.layout).toEqual({
+      type: "raid0",
+      stripe_count: 2,
+      stripe_size: 1048576,
+      pool: "fastpool",
+    });
     expect(info.stripes.map((s) => s.ost)).toEqual([25, 31]);
     expect(info.stripes.map((s) => s.start)).toEqual([0, 1]);
   });
@@ -46,7 +51,12 @@ describe("parseGetstripeYaml", () => {
   it("parses PFL components including the open-ended tail", () => {
     const info = parseGetstripeYaml(PFL_YAML)!;
     expect(info.stripes).toHaveLength(2);
-    expect(info.stripes[0]).toMatchObject({ start: 0, end: 1, ost: 4, mirror: -1 });
+    expect(info.stripes[0]).toMatchObject({
+      start: 0,
+      end: 1,
+      ost: 4,
+      mirror: -1,
+    });
     expect(info.stripes[1]).toMatchObject({ start: 1, ost: 9, mirror: -1 });
     expect(info.stripes[1].end).toBeGreaterThan(1_000_000);
   });
@@ -95,14 +105,17 @@ lmm_pool_name: lustre
 
 type Component = [start: number, end: number, ost: number, mirror: number];
 
-function expectStripes(info: ReturnType<typeof parseGetstripeYaml> | null, expected: Component[]): void {
+function expectStripes(
+  info: ReturnType<typeof parseGetstripeYaml> | null,
+  expected: Component[],
+): void {
   expect(info).not.toBeNull();
-  const got = info!.stripes.map((s) => [s.start, s.end, s.ost, s.mirror] as Component);
+  const got = info!.stripes.map(
+    (s) => [s.start, s.end, s.ost, s.mirror] as Component,
+  );
   expect(got).toEqual(expected);
 }
 
-// Verbatim `lfs getstripe --yaml <dir>` output from a real 2-OST cluster:
-// directory output has top-level stripe_* scalars plus the lmm_* block.
 const REAL_CLUSTER_DIR = `
 stripe_count:  2
 stripe_size:   4194304
@@ -120,9 +133,6 @@ lmm_objects:
         l_fid:     0x240000400:0x4:0x0
 `;
 
-// A never-written file has no object list: its stripe_offset hint stays -1
-// and the single stripe is reported as unplaced (ost -1), matching how the
-// UI tallies unplaced files.
 const UNPLACED_FILE = `
 stripe_count:  1
 stripe_size:   4194304
@@ -135,10 +145,6 @@ lmm_layout_gen:    0
 lmm_stripe_offset: -1
 `;
 
-// Verbatim `lfs getstripe --yaml <file>` output from the same cluster
-// (lustrelab-AB-client, /mnt/lustre/test2/multi-ost-file): a REGULAR FILE
-// emits ONLY the lmm_* block — no top-level stripe_* scalars. The all-lmm
-// root must still be descended into so lmm_objects placements are found.
 const REAL_CLUSTER_FILE = `
 lmm_stripe_count:  2
 lmm_stripe_size:   4194304

@@ -14,7 +14,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Lustre Stripe Explorer",
-  description: "Visualize where every file's stripes landed across OSTs on a Lustre filesystem",
+  description:
+    "Visualize where every file's stripes landed across OSTs on a Lustre filesystem",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
